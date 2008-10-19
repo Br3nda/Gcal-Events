@@ -1,0 +1,596 @@
+<?php
+// $Id: gcal_events.module,v 1.1 2008/10/19 06:37:46 se7enlc Exp $
+
+/**
+ * @file
+ * GCal Events Module
+ * Show upcoming events from a google calendar XML feed in blocks
+ *
+ * @author Jeff Simpson
+ *
+ * Adapted from: http://james.cridland.net/code/google-calendar.html
+ *
+ * TODO: Customizable number of days ahead to look
+ */
+
+
+/*
+ * PHP Version Compatibility Check. Timezone support requires PHP 5.1 or higher.
+ */
+if (version_compare(PHP_VERSION, "5.1", ">=")) {
+  define('USE_TIMEZONES', 1);
+}
+else {
+  define('USE_TIMEZONES', 0);
+}
+
+/*
+ * Configuration Defaults
+ */
+define('GCAL_EVENTS_DEFAULT_TEMPLATE_EVENT', '<P>#TITLE##LOC##DATE##TIME#');
+define('GCAL_EVENTS_DEFAULT_TEMPLATE_TITLE', '<b>#TITLE#</b><br>');
+define('GCAL_EVENTS_DEFAULT_TEMPLATE_DATE', '#DATE#<br>');
+define('GCAL_EVENTS_DEFAULT_TEMPLATE_TIME', '#TIME#<br>');
+define('GCAL_EVENTS_DEFAULT_TEMPLATE_DESC', '#DESC#<br>');
+define('GCAL_EVENTS_DEFAULT_TEMPLATE_LOC', '#LOC#');
+define('GCAL_EVENTS_DEFAULT_TEMPLATE_URL', '#URL#');
+define('GCAL_EVENTS_DEFAULT_TIME_FORMAT', 'g:ia');
+define('GCAL_EVENTS_DEFAULT_DATE_FORMAT', 'j F, Y');
+define('GCAL_EVENTS_DEFAULT_NUM_BLOCKS', 1);
+define('GCAL_EVENTS_DEFAULT_NUM_EVENTS', 5);
+define('GCAL_EVENTS_DEFAULT_CACHE', drupal_get_path('module', 'gcal_events') ."/cache");
+define('GCAL_EVENTS_DEFAULT_FOOTER', '');
+
+if (USE_TIMEZONES) {
+  define('GCAL_EVENTS_DEFAULT_TIMEZONE', date_default_timezone_get());
+}
+
+/*
+ * administration settings panel
+ */
+function gcal_events_admin() {
+  // Only Admin Allowed
+  if (!user_access("access administration pages")) {
+    drupal_set_message('You do not have sufficient permissions to access this page', 'error');
+    return;
+  }
+
+  // Set the cache directory
+  $form['gcal_events_cache'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Cache Directory'),
+    '#default_value' => variable_get('gcal_events_cache', GCAL_EVENTS_DEFAULT_CACHE),
+    '#description' => t('Cache directory for xml files. Must be writeable by webserver. Leave blank for no caching (not recommended!)')
+  );
+
+  // Set the number of blocks available for use
+  $form['gcal_events_num_blocks'] = array(
+    '#type' => 'textfield',
+    '#title' => 'Number of blocks',
+    '#size' => 5,
+    '#default_value' => variable_get('gcal_events_num_blocks', GCAL_EVENTS_DEFAULT_NUM_BLOCKS),
+    '#description' => 'The number of event blocks to enable',
+    '#required' => TRUE
+    );
+
+  // Set the date format to be used for display
+  $form['gcal_events_dateformat'] = array(
+    '#type' => 'textfield',
+    '#title' => 'Date Format',
+    '#size' => 10,
+    '#default_value' => variable_get('gcal_events_dateformat', GCAL_EVENTS_DEFAULT_DATE_FORMAT),
+    '#description' => 'The format to display the date on the event blocks. Default is j F Y, which corresponds to 10 March, 2008. See the <a href="http://www.php.net/date">PHP Date Reference</A> for details',
+    '#required' => TRUE
+    );
+
+  // Set the time format to be used for display  
+  $form['gcal_events_timeformat'] = array(
+    '#type' => 'textfield',
+    '#title' => 'Time Format',
+    '#size' => 10,
+    '#default_value' => variable_get('gcal_events_timeformat', GCAL_EVENTS_DEFAULT_TIME_FORMAT),
+    '#description' => 'The format to display the date on the event blocks. Default is g:ia, which corresponds to 12:15am',
+    '#required' => TRUE
+    );
+
+  // Timezone selection.
+  if (USE_TIMEZONES) {
+    $form['gcal_events_timezone'] = array(
+      '#type' => 'textfield',
+      '#title' => 'Timezone',
+      '#size' => 30,
+      '#default_value' => variable_get('gcal_events_timezone', GCAL_EVENTS_DEFAULT_TIMEZONE),
+      '#description' => 'The Timezone to use. See the <a href="http://us.php.net/manual/en/timezones.php">List of Supported Timezones</A>.',
+      '#required' => TRUE
+      );
+  }
+
+  // Turn on debugging mode
+  $form['gcal_events_debug'] = array(
+    '#type' => 'checkbox',
+    '#title' => 'Debug Mode',
+    '#default_value' => variable_get('gcal_events_debug', FALSE),
+    '#description' => 'Enable debugging mode'
+    );
+
+  return system_settings_form($form);
+}
+
+/*
+ * Validate the admin settings form. Check to make sure number of blocks is positive. Time/Date formats are hard to check....so we just don't.
+ */
+function gcal_events_admin_validate($form, &$form_state) {
+  $num_blocks = $form_state['values']['gcal_events_num_blocks'];
+  if (!is_numeric($num_blocks)) {
+    form_set_error('gcal_events_num_blocks', t('You must select a number for the number of blocks.'));
+  }
+  else if ($num_blocks <= 0) {
+    form_set_error('gcal_events_num_blocks', t('Number of blocks must be positive.'));
+  }
+
+  $cache = $form_state['values']['gcal_events_cache'];
+
+  if (strlen($cache)>0) {
+    if (!file_exists($cache)) {
+      form_set_error('gcal_events_cache', t('Cache Directory "') . $cache . t('" does not exist. Please create it before saving the settings.'));
+    }
+    if (!is_dir($cache)) {
+      form_set_error('gcal_events_cache', t('Cache directory "') . $cache . t('" is not a directory!'));
+    }
+    if (!is_writeable($cache)) {
+      form_set_error('gcal_events_cache', t('Cache directory "') . $cache . t('" is not writeable'));
+    }
+  }
+
+  if (USE_TIMEZONES) {
+    $timezone = $form_state['values']['gcal_events_timezone'];
+    if (!date_default_timezone_set($timezone)) {
+      form_set_error('gcal_events_timezone', t('Timezone is not valid'));
+    }
+  }
+}
+
+/*
+ * Add the gcal events admin settings panel to the admin panel
+ */
+function gcal_events_menu() {
+  $items = array();
+
+  $items['admin/settings/gcal_events'] = array(
+    'title' => 'GCal Events module settings',
+    'description' => 'Configure settings for google calendar upcoming event blocks, including the cache directory, number of blocks, and date/time formats',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('gcal_events_admin'),
+    'access arguments' => array('access administration pages'),
+    'type' => MENU_NORMAL_ITEM,
+   );
+
+  return $items;
+}
+
+function gcal_events_admin_name_validate($element) {
+
+  form_set_error('gcal_events_admin_name', 'Admin name not funny enough');
+}
+
+/**
+ * Implementation of hook_block().
+ *
+ * This hook both declares to Drupal what blocks are provided by the module, and
+ * generates the contents of the blocks themselves.
+ */
+function gcal_events_block($op = 'list', $delta = 0, $edit = array()) {
+  // The $op parameter determines what piece of information is being requested.
+  switch ($op) {
+    case 'list':
+      $blocks = array();
+
+      // If $op is "list", we just need to return a list of block descriptions.
+      // This is used to provide a list of possible blocks to the administrator,
+      // end users will not see these descriptions.
+
+      for ($index=0; $index<variable_get('gcal_events_num_blocks', 1); $index++) {
+        $blocks[$index]['info'] = t('GCal Events ['. variable_get('gcal_events_admin_name_'. $index, 'Block '. ($index+1)) .']');
+      }
+      return $blocks;
+
+    case 'configure':
+      // If $op is "configure", we need to provide the administrator with a
+      // configuration form. The $delta parameter tells us which block is being
+      // configured. In this example, we'll allow the administrator to customize
+      // the text of the first block.
+      $form = array();
+
+      $form['gcal_events_admin_name'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Admin Name'),
+        '#size' => 40,
+        '#description' => t('An optional short name for this block. This will only be seen in the admin panel to differentiate between calendars when sorting blocks.'),
+        '#default_value' => variable_get('gcal_events_admin_name_'. $delta, 'Block '. ($delta+1)),
+        );
+
+      $form['gcal_events_calendar_id'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Calendar ID'),
+        '#size' => 60,
+        '#description' => t('Calendar ID, as shown on Calendar Settings page in google calendar. Will be in the form something@group.calendar.google.com, someting@gmail.com, etc'),
+        '#default_value' => variable_get('gcal_events_calendar_id_'. $delta,  '')
+        );
+
+      $form['gcal_events_private_id'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Private ID'),
+        '#size' => 60,
+        '#description' => t('To use a private calendar, include the Private ID here. The Private ID will be part of the Private XML address that looks like private-XXXXXXXXXXXXX/basic. Include only the string after private- but before /basic. Leave this field blank to use the public calendar. Note: You still must include Calendar ID, even if you are using a private calendar'),
+        '#default_value' => variable_get('gcal_events_privatE_id_'. $delta, '')
+      );
+
+      $form['gcal_events_num_events'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Number of Events'),
+        '#size' => 5,
+        '#description' => t('The number of upcoming events to display in this block'),
+        '#default_value' => variable_get('gcal_events_num_events_'. $delta, GCAL_EVENTS_DEFAULT_NUM_EVENTS)
+        );
+    
+      $form['gcal_events_dateformat'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Date Format'),
+        '#description' => t('Date format to use for this block. Leave blank for default.'),
+        '#default_value' => variable_get('gcal_events_dateformat_'. $delta, "")
+        );
+
+      $form['gcal_events_timeformat'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Time Format'),
+        '#description' => t('Time format to use for this block. Leave blank for default.'),
+        '#default_value' => variable_get('gcal_events_timeformat_'. $delta, "")
+        );
+
+      $form['gcal_events_template_event'] = array(
+        '#type' => 'textarea',
+        '#title' => 'Event Template',
+        '#rows' => 5,
+        '#cols' => 20,
+        '#description' => t('Template for an event. Use the variables #TITLE#, #DESC#, #DATE#, #TIME#, #LOC#, #URL#, to insert values'),
+        '#default_value' => variable_get('gcal_events_template_event_'. $delta, GCAL_EVENTS_DEFAULT_TEMPLATE_EVENT)
+        );
+      $form['gcal_events_template_title'] = array(
+        '#type' => 'textfield',
+        '#title' => 'Title Template',
+        '#description' => t('Title template. Use #TITLE# to insert the title. This is used for simple html formatting (bold, italic, linebreak) of a single variable. This is helpful for avoiding multiple linebreaks or hyphens if data elements are not present in the event'),
+        '#default_value' => variable_get('gcal_events_template_title_'. $delta, GCAL_EVENTS_DEFAULT_TEMPLATE_TITLE)
+        );
+      $form['gcal_events_template_desc'] = array(
+        '#type' => 'textfield',
+        '#title' => 'Description Template',
+        '#description' => t('Description template. Use #DESC# to insert the description. This is used for simple html formatting (bold, italic, linebreak) of a single variable. This is helpful for avoiding multiple linebreaks or hyphens if data elements are not present in the event'),
+        '#default_value' => variable_get('gcal_events_template_desc_'. $delta, GCAL_EVENTS_DEFAULT_TEMPLATE_DESC)
+        );
+
+      $form['gcal_events_template_date'] = array(
+        '#type' => 'textfield',
+        '#title' => 'Date Template',
+        '#description' => t('Date template. Use #DATE# to insert the date. This is used for simple html formatting (bold, italic, linebreak) of a single variable. This is helpful for avoiding multiple linebreaks or hyphens if data elements are not present in the event'),
+        '#default_value' => variable_get('gcal_events_template_date_'. $delta, GCAL_EVENTS_DEFAULT_TEMPLATE_DATE)
+        );
+      $form['gcal_events_template_time'] = array(
+        '#type' => 'textfield',
+        '#title' => 'Time Template',
+        '#description' => t('Time template. Use #TIME# to insert the time. This is used for simple html formatting (bold, italic, linebreak) of a single variable. This is helpful for avoiding multiple linebreaks or hyphens if data elements are not present in the event'),
+        '#default_value' => variable_get('gcal_events_template_time_'. $delta, GCAL_EVENTS_DEFAULT_TEMPLATE_TIME)
+        );
+      $form['gcal_events_template_loc'] = array(
+        '#type' => 'textfield',
+        '#title' => 'Location Template',
+        '#description' => t('Location template. Use #LOC# to insert the location. This is used for simple html formatting (bold, italic, linebreak) of a single variable. This is helpful for avoiding multiple linebreaks or hyphens if data elements are not present in the event'),
+        '#default_value' => variable_get('gcal_events_template_loc_'. $delta, GCAL_EVENTS_DEFAULT_TEMPLATE_LOC)
+        );
+
+      $form['gcal_events_empty'] = array(
+        '#type' => 'textarea',
+        '#title' => t('No Events'),
+        '#description' => t('Text to display when there are no events to list. Leaving this blank will result in the block not appearing when there are no events.'),
+        '#default_value' => variable_get('gcal_events_empty_'. $delta, 'none')
+        );
+
+      $form['gcal_events_footer'] = array(
+        '#type' => 'textarea',
+        '#title' => t('Footer'),
+        '#description' => t('Text to display at the bottom of this event list. Typically contains a link to the source for the calendar.'),
+        '#default_value' => variable_get('gcal_events_footer_'. $delta, '')
+        );
+
+      return $form;
+
+    case 'save':
+      // If $op is "save", we need to save settings from the configuration form.
+      // Since the first block is the only one that allows configuration, we
+      // need to check $delta to make sure we only save it.
+
+      // Have Drupal save the string to the database.
+      variable_set('gcal_events_calendar_id_'. $delta, check_plain($edit['gcal_events_calendar_id']));
+      variable_set('gcal_events_private_id_'. $delta, check_plain($edit['gcal_events_private_id']));
+
+      // error check
+      if ($edit['gcal_events_num_events'] > 0) {
+        variable_set('gcal_events_num_events_'. $delta, check_plain($edit['gcal_events_num_events']));
+      }
+
+      variable_set('gcal_events_empty_'. $delta, check_markup($edit['gcal_events_empty']));
+      variable_set('gcal_events_footer_'. $delta, check_markup($edit['gcal_events_footer']));
+      variable_set('gcal_events_admin_name_'. $delta, check_plain($edit['gcal_events_admin_name']));
+      variable_set('gcal_events_template_event_'. $delta, check_markup($edit['gcal_events_template_event']));
+      variable_set('gcal_events_template_title_'. $delta, check_markup($edit['gcal_events_template_title']));
+      variable_set('gcal_events_template_desc_'. $delta, check_markup($edit['gcal_events_template_desc']));
+      variable_set('gcal_events_template_time_'. $delta, check_markup($edit['gcal_events_template_time']));
+      variable_set('gcal_events_template_date_'. $delta, check_markup($edit['gcal_events_template_date']));
+      variable_set('gcal_events_template_loc_'. $delta, check_markup($edit['gcal_events_template_loc']));
+
+      variable_set('gcal_events_timeformat_'. $delta, check_plain($edit['gcal_events_timeformat']));
+      variable_set('gcal_events_dateformat_'. $delta, check_plain($edit['gcal_events_dateformat']));
+
+      return;
+    case 'view': default:
+      // If $op is "view", then we need to generate the block for display
+      // purposes. The $delta parameter tells us which block is being requested.
+
+      $block['subject'] = t('Calendar '. ($delta+1));
+      $block['content'] = gcal_events_contents($delta);
+
+      return $block;
+  }
+}
+
+/**
+ * A block content function.
+ */
+function gcal_events_contents($which_block) {
+  // Change this to 'true' to see lots of fancy debug code
+  $debug_mode=variable_get('gcal_events_debug', FALSE);
+
+  $output_text = "";
+
+  $calendar_id = variable_get('gcal_events_calendar_id_'. $which_block, '');
+  $private_id = variable_get('gcal_events_private_id_'. $which_block, ''); 
+
+  if ($calendar_id == "") {
+    drupal_set_message('GCal Events['. $which_block .'] Calendar ID Not Set!', 'error');
+    return;
+  }
+
+  if (USE_TIMEZONES) { 
+    if ($debug_mode) {
+      drupal_set_message('Timezone: '. date_default_timezone_get());
+    }
+    $timezone = variable_get('gcal_events_timezone', GCAL_EVENTS_DEFAULT_TIMEZONE);
+    if (!date_default_timezone_set($timezone)) {
+      drupal_set_message('GCal Events: Timezone $timezone is not valid!');
+    }
+  }
+  else {
+    if ($debug_mode) {
+      drupal_set_message('Timezone Support Disabled! PHP Version '. PHP_VERSION .' < 5.1');
+    }
+  }  
+
+  // Date format you want your details to appear
+  $dateformat = variable_get('gcal_events_dateformat_'. $which_block, "");
+  if ($dateformat == "") {
+    $dateformat = variable_get('gcal_events_dateformat', GCAL_EVENTS_DEFAULT_DATE_FORMAT);
+  }
+
+  $timeformat = variable_get('gcal_events_timeformat_'. $which_block, "");
+  if ($timeformat == "") {
+    $timeformat = variable_get('gcal_events_timeformat', GCAL_EVENTS_DEFAULT_TIME_FORMAT);
+  }
+
+  // How you want each thing to display.
+  // 
+  // #TITLE#
+  // #DATE#
+  // #TIME#
+  // #URL#
+  // #LOC#
+  // #DESC#
+
+  //Where your simplepie.inc is (mine's in the root for some reason)
+  if (!include_once(drupal_get_path('module', 'gcal_events') .'/simplepie.inc')) {
+    drupal_set_message('GCal Events: simplepie.inc not found!', 'error');
+    return;
+  }
+
+  // Make sure that correct version of SimplePie is loaded
+  if (SIMPLEPIE_VERSION<1) {
+    drupal_set_message('SimplePie v1.0 or above required for GCal Events', 'error');
+    return;
+  }
+
+  // Form the XML address.
+  $public_private = "public";
+  if ($private_id != "") {
+    $public_private = "private-". $private_id;
+  }
+  $calendar_xml_address = "http://www.google.com/calendar/feeds/". urlencode($calendar_id) ."/". $public_private ."/full?max-results=2500&futureevents=true&orderby=starttime";
+
+  // If you only want a section of dates - today only, for example, then try the following, which sets a maximum date to return. I've set this for a day from now.
+  // $calendar_xml_address = "http://www.google.com/calendar/feeds/".$gmail."/public/full?start-min=".date("Y-m-d")."&start-max=".date("Y-m-d",strtotime("+1 day"));
+
+  // Let's create a new SimplePie object
+  $feed = new SimplePie();
+
+  // Cache location for your XML file 
+  $cache_location=variable_get('gcal_events_cache', GCAL_EVENTS_DEFAULT_CACHE);
+  if ($cache_location=="") {
+    // Cache disabled
+    $feed->enable_cache(false);
+    if ($debug_mode) {
+      drupal_set_message($which_block .': WARNING: Cache Disabled');
+    }
+  }
+  else {
+    if (!is_writeable($cache_location)) {
+      drupal_set_message('GCal Events: Cache directory not writeable. Caching is disabled.', 'error');
+      $feed->enable_cache(false);
+    }
+    else {
+      $feed->enable_cache(true); // Default
+      if ($debug_mode) {
+        drupal_set_message('GCal Events['. $which_block .'] Cache is set to '. $cache_location);
+      }
+      //$feed->set_autodiscovery_cache_duration(50);
+      $feed->set_cache_duration(0);
+      //$feed->cache_max_minutes(15);    
+    }
+  }
+
+  // Set the cache location
+  $feed->set_cache_location($cache_location);
+
+  // This is the feed we'll use
+  $feed->set_feed_url($calendar_xml_address);
+  if ($debug_mode) {
+    drupal_set_message('GCal Events['. $which_block .'] FeedURL: '. $calendar_xml_address);
+  }
+
+  // Let's turn this off because we're just going to re-sort anyways, and there's no reason to waste CPU doing it twice.
+  $feed->enable_order_by_date(false);
+
+  // Initialize the feed so that we can use it.
+  $feed->init();
+
+  if ($feed->error()) {
+    drupal_set_message('GCal Events['. $which_block .'] '. $feed->error(), 'error');
+    return;
+  }
+
+  // Make sure the content is being served out to the browser properly.
+  $feed->handle_content_type();
+
+  // We'll use this for re-sorting the items based on the new date.
+  $temp = array();
+
+  foreach ($feed->get_items() as $item) {
+    // We want to grab the Google-namespaced <gd:when> tag.
+    $when = $item->get_item_tags('http://schemas.google.com/g/2005', 'when');
+
+    // Now, let's grab the Google-namespaced <gd:where> tag.
+    $gd_where = $item->get_item_tags('http://schemas.google.com/g/2005', 'where');
+    $location = $gd_where[0]['attribs']['']['valueString'];
+
+    //and the status tag too, come to that
+    $gd_status = $item->get_item_tags('http://schemas.google.com/g/2005', 'eventStatus');
+    $status = substr( $gd_status[0]['attribs']['']['value'], -8);
+
+    //if ($debug_mode) $output_text = $output_text . "when: " . $when[0]['attribs']['']['startTime'] . "<br>";
+    $date = $when[0]['attribs']['']['startTime'];
+    $allday = strlen($date)<11;
+    $unixdate = SimplePie_Misc::parse_date($date);
+    if ($allday) {
+      $unixdate += 86400;
+    }
+    // + 86400 for all-day events to fix bug
+    if ($debug_mode) {
+      $output_text .= 'When: '. $unixdate .'<br>';
+    }
+    $where = $item->get_item_tags('http://schemas.google.com/g/2005', 'where');
+    $location = $where[0]['attribs']['']['valueString'];
+
+    if (strlen(trim($item->get_title()))>1 && $status != "canceled" && strlen(trim($date)) > 0) {
+        $temp[] = array(
+            'date' => $unixdate,
+            'allday' => $allday,
+            'where' => $location,
+            'title' => $item->get_title(),
+            'description' => $item->get_description(),
+            'link' => $item->get_link()
+        );
+    }
+  }
+  //Sort this
+  sort($temp);
+
+  // Limit the looping
+  $num_events = variable_get('gcal_events_num_events_'. $which_block, GCAL_EVENTS_DEFAULT_NUM_EVENTS);
+  if ($debug_mode) {
+    drupal_set_message('GCal Events['. $which_block .'] Num Events: '. $num_events );
+  }
+
+  // Loop through the (now sorted) array, and display what we wanted.
+
+  foreach ($temp as $item) {
+    $num_events--;
+    // These are the dates we'll display
+    $gcal_date = date($dateformat, $item['date']);
+
+    if ($debug_mode) {
+      $output_text .= "item[date]: ". $item['date'] ."<br>";
+    }
+
+    if (!$item['allday']) {
+      $gcal_time = date($timeformat, $item['date']);
+    }
+
+    // Now, let's run it through some str_replaces, and store it with the date for easy sorting later
+    $temp_event=variable_get('gcal_events_template_event_'. $which_block, GCAL_EVENTS_DEFAULT_TEMPLATE_EVENT);
+
+    if ($item['title']) {
+      $temp_event=str_replace("#TITLE#", $item['title'], str_replace("#TITLE#", variable_get('gcal_events_template_title_'. $which_block, GCAL_EVENTS_DEFAULT_TEMPLATE_TITLE), $temp_event));
+    }
+    else {
+      $temp_event=str_replace("#TITLE#", "", $temp_event);
+    }
+
+    if ($item['description']) {
+      $temp_event=str_replace("#DESC#", $item['description'], str_replace("#DESC#", variable_get('gcal_events_template_desc_'. $which_block, GCAL_EVENTS_DEFAULT_TEMPLATE_DESC), $temp_event));
+    }
+    else {
+      $temp_event=str_replace("#DESC#", "", $temp_event);
+    }
+
+    if ($gcal_date) {
+      $temp_event=str_replace("#DATE#", $gcal_date, str_replace("#DATE#", variable_get('gcal_events_template_date_'. $which_block, GCAL_EVENTS_DEFAULT_TEMPLATE_DATE), $temp_event));
+    }
+    else {
+      $temp_event=str_replace("#DATE#", "", $temp_event);
+    }
+
+    if ($gcal_time) {
+      $temp_event=str_replace("#TIME#", $gcal_time, str_replace("#TIME#", variable_get('gcal_events_template_time_'. $which_block, GCAL_EVENTS_DEFAULT_TEMPLATE_TIME), $temp_event));
+    }
+    else {
+      $temp_event=str_replace("#TIME#", "", $temp_event);
+    }
+
+    if ($item['where']) {
+      $temp_event=str_replace("#LOC#", $item['where'], str_replace("#LOC#", variable_get('gcal_events_template_loc_'. $which_block, GCAL_EVENTS_DEFAULT_TEMPLATE_LOC), $temp_event));
+      $temp_event=str_replace("#LOCURL#", urlencode($item['where']), $temp_event);
+    }
+    else {
+      $temp_event=str_replace("#LOC#", "", $temp_event);
+    }
+
+    if ($item['link']) {
+      $temp_event=str_replace("#URL#", $item['link'], str_replace("#URL#", variable_get('gcal_events_template_url_'. $which_block, GCAL_EVENTS_DEFAULT_TEMPLATE_URL), $temp_event));
+    }
+    else {
+      $temp_event=str_replace("#URL#", "", $temp_event);
+    }
+
+    // Check for invalid html
+    $temp_event = check_markup($temp_event);
+
+    $output_text = $output_text . $temp_event ."<br>";
+    if ($num_events==0) {
+      break;
+    }
+  }
+
+  if ($output_text == "") {
+    $output_text .= variable_get('gcal_events_empty_'. $which_block, 'none');
+  }
+
+  $output_text .= variable_get('gcal_events_footer_'. $which_block, '');
+
+  return check_markup($output_text);
+}
