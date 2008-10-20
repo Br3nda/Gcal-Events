@@ -1,5 +1,5 @@
 <?php
-// $Id: gcal_events.module,v 1.1 2008/10/19 06:37:46 se7enlc Exp $
+// $Id: gcal_events.module,v 1.2 2008/10/20 03:14:30 se7enlc Exp $
 
 /**
  * @file
@@ -222,7 +222,7 @@ function gcal_events_block($op = 'list', $delta = 0, $edit = array()) {
         '#title' => t('Private ID'),
         '#size' => 60,
         '#description' => t('To use a private calendar, include the Private ID here. The Private ID will be part of the Private XML address that looks like private-XXXXXXXXXXXXX/basic. Include only the string after private- but before /basic. Leave this field blank to use the public calendar. Note: You still must include Calendar ID, even if you are using a private calendar'),
-        '#default_value' => variable_get('gcal_events_privatE_id_'. $delta, '')
+        '#default_value' => variable_get('gcal_events_private_id_'. $delta, '')
       );
 
       $form['gcal_events_num_events'] = array(
