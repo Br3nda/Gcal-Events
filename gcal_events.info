@@ -1,6 +1,4 @@
-; $Id: gcal_events.info,v 1.1 2008/10/19 06:37:46 se7enlc Exp $
+; $Id: gcal_events.info,v 1.2 2008/10/20 03:28:17 se7enlc Exp $
 name = GCal Events
 description = Upcoming events blocks for Google Calendar. 
 package = Date/Time
-core = 6.x
-version = 6.x-1.09
