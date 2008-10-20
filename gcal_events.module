@@ -1,5 +1,5 @@
 <?php
-// $Id: gcal_events.module,v 1.4 2008/10/20 06:25:54 se7enlc Exp $
+// $Id: gcal_events.module,v 1.5 2008/10/20 15:15:34 se7enlc Exp $
 
 /**
  * @file
@@ -219,6 +219,7 @@ function gcal_events_block($op = 'list', $delta = 0, $edit = array()) {
         '#type' => 'textfield',
         '#title' => t('Calendar ID'),
         '#size' => 60,
+        '#maxlength' => 300,
         '#description' => t('Calendar ID, as shown on Calendar Settings page in google calendar. Will be in the form something@group.calendar.google.com, someting@gmail.com, etc'),
         '#default_value' => variable_get('gcal_events_calendar_id_'. $delta,  '')
         );
@@ -227,6 +228,7 @@ function gcal_events_block($op = 'list', $delta = 0, $edit = array()) {
         '#type' => 'textfield',
         '#title' => t('Private ID'),
         '#size' => 60,
+        '#maxlength' => 300,
         '#description' => t('To use a private calendar, include the Private ID here. The Private ID will be part of the Private XML address that looks like private-XXXXXXXXXXXXX/basic. Include only the string after private- but before /basic. Leave this field blank to use the public calendar. Note: You still must include Calendar ID, even if you are using a private calendar'),
         '#default_value' => variable_get('gcal_events_private_id_'. $delta, '')
       );
@@ -322,8 +324,17 @@ function gcal_events_block($op = 'list', $delta = 0, $edit = array()) {
       // need to check $delta to make sure we only save it.
 
       // Have Drupal save the string to the database.
-      variable_set('gcal_events_calendar_id_'. $delta, check_plain($edit['gcal_events_calendar_id']));
-      variable_set('gcal_events_private_id_'. $delta, check_plain($edit['gcal_events_private_id']));
+      $calendar_id = check_plain($edit['gcal_events_calendar_id']);
+      if (preg_match_all('#feeds/(\S+)/public#', $calendar_id, $temp_calendar_id)) {
+        $calendar_id = $temp_calendar_id[1][0];
+      }
+      variable_set('gcal_events_calendar_id_'. $delta, $calendar_id);
+
+      $private_id = check_plain($edit['gcal_events_private_id']);
+      if (preg_match_all('#private-(\S+)/basic#', $private_id, $temp_private_id)) {
+        $private_id = $temp_private_id[1][0];
+      }
+      variable_set('gcal_events_private_id_'. $delta, $private_id);
 
       // error check
       if ($edit['gcal_events_num_events'] > 0) {
@@ -450,7 +461,7 @@ function gcal_events_contents($which_block) {
   if ($private_id != "") {
     $public_private = "private-". $private_id;
   }
-  $calendar_xml_address = "http://www.google.com/calendar/feeds/". urlencode($calendar_id) ."/". $public_private ."/full?max-results=2500&futureevents=true&orderby=starttime";
+  $calendar_xml_address = "http://www.google.com/calendar/feeds/". $calendar_id ."/". $public_private ."/full?max-results=2500&futureevents=true&orderby=starttime";
 
   // If you only want a section of dates - today only, for example, then try the following, which sets a maximum date to return. I've set this for a day from now.
   // $calendar_xml_address = "http://www.google.com/calendar/feeds/".$gmail."/public/full?start-min=".date("Y-m-d")."&start-max=".date("Y-m-d",strtotime("+1 day"));
