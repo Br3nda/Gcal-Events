@@ -1,5 +1,5 @@
 <?php
-// $Id: gcal_events.module,v 1.5 2008/10/20 15:15:34 se7enlc Exp $
+// $Id: gcal_events.module,v 1.6 2008/10/21 22:47:07 se7enlc Exp $
 
 /**
  * @file
@@ -39,6 +39,7 @@ define('GCAL_EVENTS_DEFAULT_DATE_FORMAT', 'j F, Y');
 define('GCAL_EVENTS_DEFAULT_NUM_BLOCKS', 1);
 define('GCAL_EVENTS_DEFAULT_NUM_EVENTS', 5);
 define('GCAL_EVENTS_DEFAULT_CACHE', drupal_get_path('module', 'gcal_events') ."/cache");
+define('GCAL_EVENTS_DEFAULT_CACHE_DURATION', 3600);
 define('GCAL_EVENTS_DEFAULT_FOOTER', '');
 
 if (USE_TIMEZONES) {
@@ -61,6 +62,14 @@ function gcal_events_admin() {
     '#title' => t('Cache Directory'),
     '#default_value' => variable_get('gcal_events_cache', GCAL_EVENTS_DEFAULT_CACHE),
     '#description' => t('Cache directory for xml files. Must be writeable by webserver. Leave blank for no caching (not recommended!)')
+  );
+
+  $form['gcal_events_cache_duration'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Cache Duration'),
+    '#size' => 5,
+    '#default_value' => variable_get('gcal_events_cache_duration', GCAL_EVENTS_DEFAULT_CACHE_DURATION),
+    '#description' => t('Cache duration in seconds. Set to zero to disable caching (not recommended!)')
   );
 
   // Set the number of blocks available for use
@@ -203,7 +212,7 @@ function gcal_events_block($op = 'list', $delta = 0, $edit = array()) {
       $form = array();
 
       $form['gcal_events_block'] = array(
-        '#type' => 'textfield',
+        '#type' => 'hidden',
 	'#default_value' => $delta
 	);
 
@@ -220,7 +229,7 @@ function gcal_events_block($op = 'list', $delta = 0, $edit = array()) {
         '#title' => t('Calendar ID'),
         '#size' => 60,
         '#maxlength' => 300,
-        '#description' => t('Calendar ID, as shown on Calendar Settings page in google calendar. Will be in the form something@group.calendar.google.com, someting@gmail.com, etc'),
+        '#description' => t('Calendar ID, as shown on Calendar Settings page in google calendar. Will be in the form something@group.calendar.google.com, someting@gmail.com, etc. You can also put the entire XML address in here and the correct ID will be parsed out. '),
         '#default_value' => variable_get('gcal_events_calendar_id_'. $delta,  '')
         );
 
@@ -229,7 +238,7 @@ function gcal_events_block($op = 'list', $delta = 0, $edit = array()) {
         '#title' => t('Private ID'),
         '#size' => 60,
         '#maxlength' => 300,
-        '#description' => t('To use a private calendar, include the Private ID here. The Private ID will be part of the Private XML address that looks like private-XXXXXXXXXXXXX/basic. Include only the string after private- but before /basic. Leave this field blank to use the public calendar. Note: You still must include Calendar ID, even if you are using a private calendar'),
+        '#description' => t('To use a private calendar, include the Private ID here. The Private ID will be part of the Private XML address that looks like private-XXXXXXXXXXXXX/basic. Include only the string after private- but before /basic. Leave this field blank to use the public calendar. Note: You still must include Calendar ID, even if you are using a private calendar. You can also put the entire private xml address in here and the private ID will be parsed out.'),
         '#default_value' => variable_get('gcal_events_private_id_'. $delta, '')
       );
 
@@ -313,7 +322,7 @@ function gcal_events_block($op = 'list', $delta = 0, $edit = array()) {
         '#type' => 'button',
         '#value' => t('Reset to defaults'),
 	'#executes_submit_callback' => TRUE,
-	'#submit' => array('test_submit')
+	'#submit' => array('block_reset_defaults')
         );
 
       return $form;
@@ -366,7 +375,7 @@ function gcal_events_block($op = 'list', $delta = 0, $edit = array()) {
   }
 }
 
-function test_submit($form, &$form_state) {
+function block_reset_defaults($form, &$form_state) {
   // Deletes all the variables for this block, resetting them to their defaults
 
   $block_number = check_plain($form_state['values']['gcal_events_block']);
@@ -394,6 +403,9 @@ function test_submit($form, &$form_state) {
  * A block content function.
  */
 function gcal_events_contents($which_block) {
+  // for timing
+  $start_time = microtime(true);
+
   // Change this to 'true' to see lots of fancy debug code
   $debug_mode=variable_get('gcal_events_debug', FALSE);
 
@@ -402,8 +414,10 @@ function gcal_events_contents($which_block) {
   $calendar_id = variable_get('gcal_events_calendar_id_'. $which_block, '');
   $private_id = variable_get('gcal_events_private_id_'. $which_block, ''); 
 
+  $admin_name = variable_get('gcal_events_admin_name_' . $which_block, 'Block '. ($which_block+1));
+
   if ($calendar_id == "") {
-    drupal_set_message('GCal Events['. $which_block .'] Calendar ID Not Set!', 'error');
+    drupal_set_message('GCal Events['. $admin_name .'] Calendar ID Not Set!', 'error');
     return;
   }
 
@@ -475,7 +489,7 @@ function gcal_events_contents($which_block) {
     // Cache disabled
     $feed->enable_cache(false);
     if ($debug_mode) {
-      drupal_set_message($which_block .': WARNING: Cache Disabled');
+      drupal_set_message('GCal Events: WARNING: Cache Disabled');
     }
   }
   else {
@@ -484,13 +498,13 @@ function gcal_events_contents($which_block) {
       $feed->enable_cache(false);
     }
     else {
+      $cache_duration = variable_get('gcal_events_cache_duration', GCAL_EVENTS_DEFAULT_CACHE_DURATION);
       $feed->enable_cache(true); // Default
+      $feed->set_cache_duration($cache_duration);
       if ($debug_mode) {
-        drupal_set_message('GCal Events['. $which_block .'] Cache is set to '. $cache_location);
+        drupal_set_message('GCal Events: Cache is set to '. $cache_location);
+        drupal_set_message('GCal Events: Cache duration is '. $cache_duration . ' seconds');
       }
-      //$feed->set_autodiscovery_cache_duration(50);
-      $feed->set_cache_duration(0);
-      //$feed->cache_max_minutes(15);    
     }
   }
 
@@ -500,17 +514,21 @@ function gcal_events_contents($which_block) {
   // This is the feed we'll use
   $feed->set_feed_url($calendar_xml_address);
   if ($debug_mode) {
-    drupal_set_message('GCal Events['. $which_block .'] FeedURL: '. $calendar_xml_address);
+    drupal_set_message('GCal Events['. $admin_name .'] <a href='. $calendar_xml_address .'>FeedURL</A>');
   }
 
   // Let's turn this off because we're just going to re-sort anyways, and there's no reason to waste CPU doing it twice.
   $feed->enable_order_by_date(false);
 
   // Initialize the feed so that we can use it.
+  $time_feed_init = microtime(true);
   $feed->init();
+  if ($debug_mode) {
+    drupal_set_message('GCal Events[' . $admin_name . '] Feed Init took ' . (microtime(true) - $time_feed_init) . ' seconds');
+  }
 
   if ($feed->error()) {
-    drupal_set_message('GCal Events['. $which_block .'] '. $feed->error(), 'error');
+    drupal_set_message('GCal Events['. $admin_name .'] '. $feed->error(), 'error');
     return;
   }
 
@@ -520,6 +538,7 @@ function gcal_events_contents($which_block) {
   // We'll use this for re-sorting the items based on the new date.
   $temp = array();
 
+  $time_feed_process = microtime(true);
   foreach ($feed->get_items() as $item) {
     // We want to grab the Google-namespaced <gd:when> tag.
     $when = $item->get_item_tags('http://schemas.google.com/g/2005', 'when');
@@ -532,7 +551,6 @@ function gcal_events_contents($which_block) {
     $gd_status = $item->get_item_tags('http://schemas.google.com/g/2005', 'eventStatus');
     $status = substr( $gd_status[0]['attribs']['']['value'], -8);
 
-    //if ($debug_mode) $output_text = $output_text . "when: " . $when[0]['attribs']['']['startTime'] . "<br>";
     $date = $when[0]['attribs']['']['startTime'];
     $allday = strlen($date)<11;
     $unixdate = SimplePie_Misc::parse_date($date);
@@ -540,9 +558,6 @@ function gcal_events_contents($which_block) {
       $unixdate += 86400;
     }
     // + 86400 for all-day events to fix bug
-    if ($debug_mode) {
-      $output_text .= 'When: '. $unixdate .'<br>';
-    }
     $where = $item->get_item_tags('http://schemas.google.com/g/2005', 'where');
     $location = $where[0]['attribs']['']['valueString'];
 
@@ -563,7 +578,7 @@ function gcal_events_contents($which_block) {
   // Limit the looping
   $num_events = variable_get('gcal_events_num_events_'. $which_block, GCAL_EVENTS_DEFAULT_NUM_EVENTS);
   if ($debug_mode) {
-    drupal_set_message('GCal Events['. $which_block .'] Num Events: '. $num_events );
+    drupal_set_message('GCal Events['. $admin_name .'] Num Events: '. $num_events );
   }
 
   // Loop through the (now sorted) array, and display what we wanted.
@@ -572,10 +587,6 @@ function gcal_events_contents($which_block) {
     $num_events--;
     // These are the dates we'll display
     $gcal_date = date($dateformat, $item['date']);
-
-    if ($debug_mode) {
-      $output_text .= "item[date]: ". $item['date'] ."<br>";
-    }
 
     if (!$item['allday']) {
       $gcal_time = date($timeformat, $item['date']);
@@ -634,6 +645,9 @@ function gcal_events_contents($which_block) {
     if ($num_events==0) {
       break;
     }
+  }
+  if ($debug_mode) {
+    drupal_set_message('GCal Events[' . $admin_name . '] Feed processing took ' . (microtime(true) - $time_feed_process) . ' seconds');
   }
 
   if ($output_text == "") {
