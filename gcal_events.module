@@ -1,5 +1,5 @@
 <?php
-// $Id: gcal_events.module,v 1.6 2008/10/21 22:47:07 se7enlc Exp $
+// $Id: gcal_events.module,v 1.7 2008/10/22 15:38:34 se7enlc Exp $
 
 /**
  * @file
@@ -459,7 +459,7 @@ function gcal_events_contents($which_block) {
   //Where your simplepie.inc is (mine's in the root for some reason)
   if (!class_exists('SimplePie')) {
     if (!include_once(drupal_get_path('module', 'gcal_events') .'/simplepie.inc')) {
-      drupal_set_message('GCal Events: simplepie.inc not found!', 'error');
+      drupal_set_message('GCal Events: simplepie.inc not found! Make sure you have simplepie installed and have copied simplepie.inc to the gcal_events directory.', 'error');
       return;
     }
   }
