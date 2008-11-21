@@ -1,5 +1,5 @@
 <?php
-// $Id: gcal_events.module,v 1.7 2008/10/22 15:38:34 se7enlc Exp $
+// $Id: gcal_events.module,v 1.8 2008/11/21 00:24:25 se7enlc Exp $
 
 /**
  * @file
@@ -41,6 +41,7 @@ define('GCAL_EVENTS_DEFAULT_NUM_EVENTS', 5);
 define('GCAL_EVENTS_DEFAULT_CACHE', drupal_get_path('module', 'gcal_events') ."/cache");
 define('GCAL_EVENTS_DEFAULT_CACHE_DURATION', 3600);
 define('GCAL_EVENTS_DEFAULT_FOOTER', '');
+define('GCAL_EVENTS_DEFAULT_INPUT_FORMAT', '1');
 
 if (USE_TIMEZONES) {
   define('GCAL_EVENTS_DEFAULT_TIMEZONE', date_default_timezone_get());
@@ -113,6 +114,20 @@ function gcal_events_admin() {
       '#required' => TRUE
       );
   }
+
+  // Get input formats and reorder into a useful manner
+  $input_formats = filter_formats();
+  foreach ($input_formats as $key=>$value) {    
+    $input_formats[$key] = $value->name;
+  }
+
+  // Input format to use
+  $form['gcal_events_input_format'] = array(
+    '#type' => 'radios',
+    '#title' => t('Input Format'),
+    '#options' => $input_formats,
+    '#default_value' => variable_get('gcal_events_input_format', GCAL_EVENTS_DEFAULT_INPUT_FORMAT)
+    );
 
   // Turn on debugging mode
   $form['gcal_events_debug'] = array(
@@ -350,15 +365,15 @@ function gcal_events_block($op = 'list', $delta = 0, $edit = array()) {
         variable_set('gcal_events_num_events_'. $delta, check_plain($edit['gcal_events_num_events']));
       }
 
-      variable_set('gcal_events_empty_'. $delta, check_markup($edit['gcal_events_empty']));
-      variable_set('gcal_events_footer_'. $delta, check_markup($edit['gcal_events_footer']));
+      variable_set('gcal_events_empty_'. $delta, $edit['gcal_events_empty']);
+      variable_set('gcal_events_footer_'. $delta, $edit['gcal_events_footer']);
       variable_set('gcal_events_admin_name_'. $delta, check_plain($edit['gcal_events_admin_name']));
-      variable_set('gcal_events_template_event_'. $delta, check_markup($edit['gcal_events_template_event']));
-      variable_set('gcal_events_template_title_'. $delta, check_markup($edit['gcal_events_template_title']));
-      variable_set('gcal_events_template_desc_'. $delta, check_markup($edit['gcal_events_template_desc']));
-      variable_set('gcal_events_template_time_'. $delta, check_markup($edit['gcal_events_template_time']));
-      variable_set('gcal_events_template_date_'. $delta, check_markup($edit['gcal_events_template_date']));
-      variable_set('gcal_events_template_loc_'. $delta, check_markup($edit['gcal_events_template_loc']));
+      variable_set('gcal_events_template_event_'. $delta, $edit['gcal_events_template_event'], 'gcal_events' );
+      variable_set('gcal_events_template_title_'. $delta, $edit['gcal_events_template_title']);
+      variable_set('gcal_events_template_desc_'. $delta, $edit['gcal_events_template_desc']);
+      variable_set('gcal_events_template_time_'. $delta, $edit['gcal_events_template_time']);
+      variable_set('gcal_events_template_date_'. $delta, $edit['gcal_events_template_date']);
+      variable_set('gcal_events_template_loc_'. $delta, $edit['gcal_events_template_loc']);
 
       variable_set('gcal_events_timeformat_'. $delta, check_plain($edit['gcal_events_timeformat']));
       variable_set('gcal_events_dateformat_'. $delta, check_plain($edit['gcal_events_dateformat']));
@@ -403,6 +418,7 @@ function block_reset_defaults($form, &$form_state) {
  * A block content function.
  */
 function gcal_events_contents($which_block) {
+
   // for timing
   $start_time = microtime(true);
 
@@ -638,8 +654,10 @@ function gcal_events_contents($which_block) {
       $temp_event=str_replace("#URL#", "", $temp_event);
     }
 
+    $input_format = variable_get('gcal_events_input_format', GCAL_EVENTS_DEFAULT_INPUT_FORMAT);
+
     // Check for invalid html
-    $temp_event = check_markup($temp_event);
+    $temp_event = _filter_html($temp_event, $input_format);
 
     $output_text = $output_text . $temp_event ."<br>";
     if ($num_events==0) {
@@ -656,5 +674,5 @@ function gcal_events_contents($which_block) {
 
   $output_text .= variable_get('gcal_events_footer_'. $which_block, '');
 
-  return check_markup($output_text);
+  return _filter_html($output_text, $input_format);
 }
