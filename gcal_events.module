@@ -1,5 +1,5 @@
 <?php
-// $Id: gcal_events.module,v 1.9 2008/11/21 02:28:26 se7enlc Exp $
+// $Id: gcal_events.module,v 1.10 2008/11/21 03:22:18 se7enlc Exp $
 
 /**
  * @file
@@ -57,23 +57,7 @@ function gcal_events_admin() {
     return;
   }
 
-  // Set the cache directory
-  $form['gcal_events_cache'] = array(
-    '#type' => 'textfield',
-    '#title' => t('Cache Directory'),
-    '#default_value' => variable_get('gcal_events_cache', GCAL_EVENTS_DEFAULT_CACHE),
-    '#description' => t('Cache directory for xml files. Must be writeable by webserver. Leave blank for no caching (not recommended!)')
-  );
-
-  $form['gcal_events_cache_duration'] = array(
-    '#type' => 'textfield',
-    '#title' => t('Cache Duration'),
-    '#size' => 5,
-    '#default_value' => variable_get('gcal_events_cache_duration', GCAL_EVENTS_DEFAULT_CACHE_DURATION),
-    '#description' => t('Cache duration in seconds. Set to zero to disable caching (not recommended!)')
-  );
-
-  // Set the number of blocks available for use
+// Set the number of blocks available for use
   $form['gcal_events_num_blocks'] = array(
     '#type' => 'textfield',
     '#title' => 'Number of blocks',
@@ -83,29 +67,56 @@ function gcal_events_admin() {
     '#required' => TRUE
     );
 
+  $form['cache'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Caching'),
+    '#collapsible' => TRUE
+  );
+
+  // Set the cache directory
+  $form['cache']['gcal_events_cache'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Cache Directory'),
+    '#default_value' => variable_get('gcal_events_cache', GCAL_EVENTS_DEFAULT_CACHE),
+    '#description' => t('Cache directory for xml files. Must be writeable by webserver. Leave blank for no caching (not recommended!)')
+  );
+
+  $form['cache']['gcal_events_cache_duration'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Cache Duration'),
+    '#size' => 5,
+    '#default_value' => variable_get('gcal_events_cache_duration', GCAL_EVENTS_DEFAULT_CACHE_DURATION),
+    '#description' => t('Cache duration in seconds. Set to zero to disable caching (not recommended!)')
+  );
+
+  $form['datetime'] = array(
+    '#type' => 'fieldset',
+    '#title' => 'Date/Time',
+    '#collapsible' => TRUE,
+    '#description' => t('The format to display the time/date on the event blocks. The default date format is j F Y, which corresponds to 10 March, 2008. The default time format is g:ia, which corresponds to 12:15am. See the <a href="http://www.php.net/date">PHP Date Reference</A> for details')
+    );
+
   // Set the date format to be used for display
-  $form['gcal_events_dateformat'] = array(
+  $form['datetime']['gcal_events_dateformat'] = array(
     '#type' => 'textfield',
     '#title' => 'Date Format',
     '#size' => 10,
     '#default_value' => variable_get('gcal_events_dateformat', GCAL_EVENTS_DEFAULT_DATE_FORMAT),
-    '#description' => 'The format to display the date on the event blocks. Default is j F Y, which corresponds to 10 March, 2008. See the <a href="http://www.php.net/date">PHP Date Reference</A> for details',
     '#required' => TRUE
     );
 
   // Set the time format to be used for display  
-  $form['gcal_events_timeformat'] = array(
+  $form['datetime']['gcal_events_timeformat'] = array(
     '#type' => 'textfield',
     '#title' => 'Time Format',
     '#size' => 10,
     '#default_value' => variable_get('gcal_events_timeformat', GCAL_EVENTS_DEFAULT_TIME_FORMAT),
-    '#description' => 'The format to display the date on the event blocks. Default is g:ia, which corresponds to 12:15am',
     '#required' => TRUE
     );
 
   // Timezone selection.
   if (USE_TIMEZONES) {
-    $form['gcal_events_timezone'] = array(
+    $form['datetime']['gcal_events_timezone'] = array(
       '#type' => 'textfield',
       '#title' => 'Timezone',
       '#size' => 30,
@@ -238,8 +249,14 @@ function gcal_events_block($op = 'list', $delta = 0, $edit = array()) {
         '#description' => t('An optional short name for this block. This will only be seen in the admin panel to differentiate between calendars when sorting blocks.'),
         '#default_value' => variable_get('gcal_events_admin_name_'. $delta, 'Block '. ($delta+1)),
         );
+   
+      $form['calendar'] = array(
+        '#type' => 'fieldset',
+        '#title' => t('Calendar Settings'),
+	'#collapsible' => TRUE
+	);
 
-      $form['gcal_events_calendar_id'] = array(
+      $form['calendar']['gcal_events_calendar_id'] = array(
         '#type' => 'textfield',
         '#title' => t('Calendar ID'),
         '#size' => 60,
@@ -248,7 +265,7 @@ function gcal_events_block($op = 'list', $delta = 0, $edit = array()) {
         '#default_value' => variable_get('gcal_events_calendar_id_'. $delta,  '')
         );
 
-      $form['gcal_events_private_id'] = array(
+      $form['calendar']['gcal_events_private_id'] = array(
         '#type' => 'textfield',
         '#title' => t('Private ID'),
         '#size' => 60,
@@ -257,76 +274,96 @@ function gcal_events_block($op = 'list', $delta = 0, $edit = array()) {
         '#default_value' => variable_get('gcal_events_private_id_'. $delta, '')
       );
 
-      $form['gcal_events_num_events'] = array(
+      $form['calendar']['gcal_events_num_events'] = array(
         '#type' => 'textfield',
         '#title' => t('Number of Events'),
         '#size' => 5,
         '#description' => t('The number of upcoming events to display in this block'),
         '#default_value' => variable_get('gcal_events_num_events_'. $delta, GCAL_EVENTS_DEFAULT_NUM_EVENTS)
         );
-    
-      $form['gcal_events_dateformat'] = array(
+
+      $form['datetime'] = array(
+        '#type' => 'fieldset',
+	'#title' => 'Date/Time',
+	'#collapsible' => TRUE,
+	'#description' => t('The format to display the time/date on the event blocks. Default is j F Y, which corresponds to 10 March, 2008. See the <a href="http://www.php.net/date">PHP Date Reference</A> for details')
+	);
+
+      $form['datetime']['gcal_events_dateformat'] = array(
         '#type' => 'textfield',
         '#title' => t('Date Format'),
         '#description' => t('Date format to use for this block. Leave blank for default.'),
         '#default_value' => variable_get('gcal_events_dateformat_'. $delta, "")
         );
 
-      $form['gcal_events_timeformat'] = array(
+      $form['datetime']['gcal_events_timeformat'] = array(
         '#type' => 'textfield',
         '#title' => t('Time Format'),
         '#description' => t('Time format to use for this block. Leave blank for default.'),
         '#default_value' => variable_get('gcal_events_timeformat_'. $delta, "")
         );
 
-      $form['gcal_events_template_event'] = array(
+      $form['template'] = array(
+        '#type' => 'fieldset',
+	'#title' => t('Templates'),
+	'#collapsible' => TRUE,
+	'#description' => t('These are the templates to use. Variables #TITLE#, #DESC#, #DATE#, #TIME#, #LOC#, #URL#, and #LOCURL# are availble for use. It is recommended to only use multiple variables inside the event template.')
+	);
+
+      $form['template']['gcal_events_template_event'] = array(
         '#type' => 'textarea',
         '#title' => 'Event Template',
         '#rows' => 5,
         '#cols' => 20,
-        '#description' => t('Template for an event. Use the variables #TITLE#, #DESC#, #DATE#, #TIME#, #LOC#, #URL#, to insert values'),
+        '#description' => t('Use the variables #TITLE#, #DESC#, #DATE#, #TIME#, #LOC#, #URL#, to insert values. These values are generated by the templates that follow.'),
         '#default_value' => variable_get('gcal_events_template_event_'. $delta, GCAL_EVENTS_DEFAULT_TEMPLATE_EVENT)
         );
-      $form['gcal_events_template_title'] = array(
+      $form['template']['gcal_events_template_title'] = array(
         '#type' => 'textfield',
-        '#title' => 'Title Template',
-        '#description' => t('Title template. Use #TITLE# to insert the title. This is used for simple html formatting (bold, italic, linebreak) of a single variable. This is helpful for avoiding multiple linebreaks or hyphens if data elements are not present in the event'),
+        '#title' => 'Title Template (#TITLE#)',
+        '#description' => t('Use #TITLE# to insert the title.'),
         '#default_value' => variable_get('gcal_events_template_title_'. $delta, GCAL_EVENTS_DEFAULT_TEMPLATE_TITLE)
         );
-      $form['gcal_events_template_desc'] = array(
+      $form['template']['gcal_events_template_desc'] = array(
         '#type' => 'textfield',
-        '#title' => 'Description Template',
-        '#description' => t('Description template. Use #DESC# to insert the description. This is used for simple html formatting (bold, italic, linebreak) of a single variable. This is helpful for avoiding multiple linebreaks or hyphens if data elements are not present in the event'),
+        '#title' => 'Description Template (#DESC#)',
+        '#description' => t('Use #DESC# to insert the description.'),
         '#default_value' => variable_get('gcal_events_template_desc_'. $delta, GCAL_EVENTS_DEFAULT_TEMPLATE_DESC)
         );
 
-      $form['gcal_events_template_date'] = array(
+      $form['template']['gcal_events_template_date'] = array(
         '#type' => 'textfield',
-        '#title' => 'Date Template',
-        '#description' => t('Date template. Use #DATE# to insert the date. This is used for simple html formatting (bold, italic, linebreak) of a single variable. This is helpful for avoiding multiple linebreaks or hyphens if data elements are not present in the event'),
+        '#title' => 'Date Template (#DATE#)',
+        '#description' => t('Use #DATE# to insert the date.'),
         '#default_value' => variable_get('gcal_events_template_date_'. $delta, GCAL_EVENTS_DEFAULT_TEMPLATE_DATE)
         );
-      $form['gcal_events_template_time'] = array(
+      $form['template']['gcal_events_template_time'] = array(
         '#type' => 'textfield',
-        '#title' => 'Time Template',
-        '#description' => t('Time template. Use #TIME# to insert the time. This is used for simple html formatting (bold, italic, linebreak) of a single variable. This is helpful for avoiding multiple linebreaks or hyphens if data elements are not present in the event'),
+        '#title' => 'Time Template (#TIME#)',
+        '#description' => t('Use #TIME# to insert the time.'),
         '#default_value' => variable_get('gcal_events_template_time_'. $delta, GCAL_EVENTS_DEFAULT_TEMPLATE_TIME)
         );
-      $form['gcal_events_template_loc'] = array(
+      $form['template']['gcal_events_template_loc'] = array(
         '#type' => 'textfield',
-        '#title' => 'Location Template',
-        '#description' => t('Location template. Use #LOC# to insert the location. This is used for simple html formatting (bold, italic, linebreak) of a single variable. This is helpful for avoiding multiple linebreaks or hyphens if data elements are not present in the event'),
+        '#title' => 'Location Template (#LOC#)',
+        '#description' => t('Use #LOC# to insert the location.'),
         '#default_value' => variable_get('gcal_events_template_loc_'. $delta, GCAL_EVENTS_DEFAULT_TEMPLATE_LOC)
         );
 
-      $form['gcal_events_empty'] = array(
+      $form['text'] = array(
+        '#type' => 'fieldset',
+	'#title' => 'Custom Text',
+	'#collapsible' => TRUE
+	);
+
+      $form['text']['gcal_events_empty'] = array(
         '#type' => 'textarea',
         '#title' => t('No Events'),
         '#description' => t('Text to display when there are no events to list. Leaving this blank will result in the block not appearing when there are no events.'),
         '#default_value' => variable_get('gcal_events_empty_'. $delta, 'none')
         );
 
-      $form['gcal_events_footer'] = array(
+      $form['text']['gcal_events_footer'] = array(
         '#type' => 'textarea',
         '#title' => t('Footer'),
         '#description' => t('Text to display at the bottom of this event list. Typically contains a link to the source for the calendar.'),
