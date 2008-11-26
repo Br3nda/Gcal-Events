@@ -1,5 +1,5 @@
 <?php
-// $Id: gcal_events.module,v 1.11 2008/11/21 03:45:04 se7enlc Exp $
+// $Id: gcal_events.module,v 1.12 2008/11/26 06:19:33 se7enlc Exp $
 
 /**
  * @file
@@ -605,12 +605,17 @@ function gcal_events_contents($which_block) {
     $status = substr( $gd_status[0]['attribs']['']['value'], -8);
 
     $date = $when[0]['attribs']['']['startTime'];
+
     $allday = strlen($date)<11;
-    $unixdate = SimplePie_Misc::parse_date($date);
+
+    // Hack to make sure all day
     if ($allday) {
-      $unixdate += 86400;
+      $unixdate = SimplePie_Misc::parse_date($date . " 11:59pm");      
     }
-    // + 86400 for all-day events to fix bug
+    else {
+      $unixdate = SimplePie_Misc::parse_date($date);
+    }
+
     $where = $item->get_item_tags('http://schemas.google.com/g/2005', 'where');
     $location = $where[0]['attribs']['']['valueString'];
 
