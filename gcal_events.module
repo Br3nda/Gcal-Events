@@ -1,5 +1,5 @@
 <?php
-// $Id: gcal_events.module,v 1.12 2008/11/26 06:19:33 se7enlc Exp $
+// $Id: gcal_events.module,v 1.13 2008/12/01 22:29:36 se7enlc Exp $
 
 /**
  * @file
@@ -697,6 +697,10 @@ function gcal_events_contents($which_block) {
     }
 
     $input_format = variable_get('gcal_events_input_format', GCAL_EVENTS_DEFAULT_INPUT_FORMAT);
+    if (!filter_access($input_format)) {
+      drupal_set_message('Input Format ' . $input_format . ' is not accessible by the current user');
+      return "Error: Input format is not accessible";
+    }
 
     // Check for invalid html
     $temp_event = check_markup($temp_event, $input_format);
@@ -715,6 +719,6 @@ function gcal_events_contents($which_block) {
   }
 
   $output_text .= variable_get('gcal_events_footer_'. $which_block, '');
-
-  return check_markup($output_text, $input_format);
+  
+  return check_markup($output_text, $input_format, true);
 }
