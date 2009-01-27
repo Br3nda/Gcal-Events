@@ -1,5 +1,5 @@
 <?php
-// $Id: gcal_events.module,v 1.13 2008/12/01 22:29:36 se7enlc Exp $
+// $Id: gcal_events.module,v 1.14 2009/01/27 21:20:26 se7enlc Exp $
 
 /**
  * @file
@@ -42,6 +42,7 @@ define('GCAL_EVENTS_DEFAULT_CACHE', drupal_get_path('module', 'gcal_events') ."/
 define('GCAL_EVENTS_DEFAULT_CACHE_DURATION', 3600);
 define('GCAL_EVENTS_DEFAULT_FOOTER', '');
 define('GCAL_EVENTS_DEFAULT_INPUT_FORMAT', '1');
+define('GCAL_EVENTS_DEFAULT_TODAY_ONLY', '0');
 
 if (USE_TIMEZONES) {
   define('GCAL_EVENTS_DEFAULT_TIMEZONE', date_default_timezone_get());
@@ -282,6 +283,13 @@ function gcal_events_block($op = 'list', $delta = 0, $edit = array()) {
         '#default_value' => variable_get('gcal_events_num_events_'. $delta, GCAL_EVENTS_DEFAULT_NUM_EVENTS)
         );
 
+      $form['calendar']['gcal_events_today_only'] = array(
+        '#type' => 'checkbox',
+        '#title' => t('Show events from today only'),
+        '#description' => t('Show only events from this calendar day, (not events in the next 24 hours)'),
+        '#default_value' => variable_get('gcal_events_today_only_'. $delta, GCAL_EVENTS_DEFAULT_TODAY_ONLY)
+        );
+
       $form['datetime'] = array(
         '#type' => 'fieldset',
 	'#title' => 'Date/Time',
@@ -402,6 +410,7 @@ function gcal_events_block($op = 'list', $delta = 0, $edit = array()) {
         variable_set('gcal_events_num_events_'. $delta, check_plain($edit['gcal_events_num_events']));
       }
 
+      variable_set('gcal_events_today_only_'. $delta, $edit['gcal_events_today_only']);
       variable_set('gcal_events_empty_'. $delta, $edit['gcal_events_empty']);
       variable_set('gcal_events_footer_'. $delta, $edit['gcal_events_footer']);
       variable_set('gcal_events_admin_name_'. $delta, check_plain($edit['gcal_events_admin_name']));
@@ -434,6 +443,7 @@ function block_reset_defaults($form, &$form_state) {
   //print "This is block number [".$block_number."]";
   drupal_set_message('Reset to defaults');
 
+  variable_del('gcal_events_today_only_'. $block_number);
   variable_del('gcal_events_footer_'. $block_number);
   variable_del('gcal_events_admin_name_'. $block_number);
   variable_del('gcal_events_calendar_id_'.$block_number);
@@ -466,6 +476,7 @@ function gcal_events_contents($which_block) {
 
   $calendar_id = variable_get('gcal_events_calendar_id_'. $which_block, '');
   $private_id = variable_get('gcal_events_private_id_'. $which_block, ''); 
+  $today_only = variable_get('gcal_events_today_only_'. $which_block, '');
 
   $admin_name = variable_get('gcal_events_admin_name_' . $which_block, 'Block '. ($which_block+1));
 
@@ -528,10 +539,19 @@ function gcal_events_contents($which_block) {
   if ($private_id != "") {
     $public_private = "private-". $private_id;
   }
-  $calendar_xml_address = "http://www.google.com/calendar/feeds/". $calendar_id ."/". $public_private ."/full?max-results=2500&futureevents=true&orderby=starttime";
+  $calendar_xml_address = "http://www.google.com/calendar/feeds/". $calendar_id ."/". $public_private ."/full?";
+  $calendar_xml_array = array();
+  array_push($calendar_xml_array, "max-results=2500", "orderby=starttime", "singleevents=true");
 
-  // If you only want a section of dates - today only, for example, then try the following, which sets a maximum date to return. I've set this for a day from now.
-  // $calendar_xml_address = "http://www.google.com/calendar/feeds/".$gmail."/public/full?start-min=".date("Y-m-d")."&start-max=".date("Y-m-d",strtotime("+1 day"));
+  // If you only want events from today, set the start-min, start-max
+  if ($today_only) {
+    array_push($calendar_xml_array, "start-min=".date("Y-m-d"), "start-max=".date("Y-m-d",strtotime("+1 day")));
+  }
+  else {
+    array_push($calendar_xml_array, "futureevents=true");
+  }
+
+  $calendar_xml_address .= join("&", $calendar_xml_array);
 
   // Let's create a new SimplePie object
   $feed = new SimplePie();
