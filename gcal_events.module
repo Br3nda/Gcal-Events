@@ -1,5 +1,5 @@
 <?php
-// $Id: gcal_events.module,v 1.14 2009/01/27 21:20:26 se7enlc Exp $
+// $Id: gcal_events.module,v 1.15 2009/01/27 22:32:44 se7enlc Exp $
 
 /**
  * @file
@@ -535,6 +535,9 @@ function gcal_events_contents($which_block) {
   }
 
   // Form the XML address.
+  //
+  // http://code.google.com/apis/calendar/docs/2.0/reference.html
+
   $public_private = "public";
   if ($private_id != "") {
     $public_private = "private-". $private_id;
@@ -545,11 +548,15 @@ function gcal_events_contents($which_block) {
 
   // If you only want events from today, set the start-min, start-max
   if ($today_only) {
-    array_push($calendar_xml_array, "start-min=".date("Y-m-d"), "start-max=".date("Y-m-d",strtotime("+1 day")));
+    //array_push($calendar_xml_array, "start-min=".date("Y-m-d"), "start-max=".date("Y-m-d",strtotime("+1 day")));
+    array_push($calendar_xml_array, "start-min=". date("Y-m-d") ."T00:00:00". date("P") );
+    array_push($calendar_xml_array, "start-max=". date("Y-m-d") ."T23:59:00". date("P") );
   }
   else {
     array_push($calendar_xml_array, "futureevents=true");
   }
+  // Timezone?
+  //array_push($calendar_xml_array, "ctz=".$timezone);
 
   $calendar_xml_address .= join("&", $calendar_xml_array);
 
@@ -630,7 +637,7 @@ function gcal_events_contents($which_block) {
 
     // Hack to make sure all day
     if ($allday) {
-      $unixdate = SimplePie_Misc::parse_date($date . " 11:59pm");      
+      $unixdate = SimplePie_Misc::parse_date($date . " 11:59pm");
     }
     else {
       $unixdate = SimplePie_Misc::parse_date($date);
@@ -668,6 +675,12 @@ function gcal_events_contents($which_block) {
 
     if (!$item['allday']) {
       $gcal_time = date($timeformat, $item['date']);
+    }
+    else
+    {
+      $gcal_time="all day";
+      // $gcal_time=""; // to have no output for all-day events
+      //$item['title'] = $item['title'] . " (all day)"; // to tag the title with "(all-day)"
     }
 
     // Now, let's run it through some str_replaces, and store it with the date for easy sorting later
