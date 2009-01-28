@@ -1,5 +1,5 @@
 <?php
-// $Id: gcal_events.module,v 1.19 2009/01/28 22:35:40 se7enlc Exp $
+// $Id: gcal_events.module,v 1.20 2009/01/28 23:32:41 se7enlc Exp $
 
 /**
  * @file
@@ -281,11 +281,12 @@ function gcal_events_block($op = 'list', $delta = 0, $edit = array()) {
 	);
 
       $form['calendar']['gcal_events_calendar_id'] = array(
-        '#type' => 'textfield',
-        '#title' => t('Calendar ID'),
+        '#type' => 'textarea',
+        '#title' => t('Calendar ID(s)'),
         '#size' => 60,
         '#maxlength' => 300,
-        '#description' => t('Calendar ID, as shown on Calendar Settings page in google calendar. Will be in the form something@group.calendar.google.com, someting@gmail.com, etc. You can also put the entire XML address in here and the correct ID will be parsed out. '),
+        '#description' => t('Calendar IDs, as shown on Calendar Settings page in google calendar. Will be in the form something@group.calendar.google.com, 
+someting@gmail.com, etc. Multiple Calendar IDs can be separated by space or return.'),
         '#default_value' => variable_get('gcal_events_calendar_id_'. $delta,  '')
         );
 
@@ -294,7 +295,10 @@ function gcal_events_block($op = 'list', $delta = 0, $edit = array()) {
         '#title' => t('Private ID'),
         '#size' => 60,
         '#maxlength' => 300,
-        '#description' => t('To use a private calendar, include the Private ID here. The Private ID will be part of the Private XML address that looks like private-XXXXXXXXXXXXX/basic. Include only the string after private- but before /basic. Leave this field blank to use the public calendar. Note: You still must include Calendar ID, even if you are using a private calendar. You can also put the entire private xml address in here and the private ID will be parsed out.'),
+        '#description' => t('To use a private calendar, include the Private ID here. The Private ID will be part of the Private XML address that looks like 
+private-XXXXXXXXXXXXX/basic. Include only the string after private- but before /basic. Leave this field blank to use the public calendar. Note: You still must include 
+Calendar ID, even if you are using a private calendar. You can also put the entire private xml address in here and the private ID will be parsed out. Using multiple 
+private calendars will not work.'),
         '#default_value' => variable_get('gcal_events_private_id_'. $delta, '')
       );
 
@@ -417,9 +421,11 @@ function gcal_events_block($op = 'list', $delta = 0, $edit = array()) {
 
       // Have Drupal save the string to the database.
       $calendar_id = check_plain($edit['gcal_events_calendar_id']);
-      if (preg_match_all('#feeds/(\S+)/public#', $calendar_id, $temp_calendar_id)) {
-        $calendar_id = $temp_calendar_id[1][0];
-      }
+
+      //if (preg_match_all('#feeds/(\S+)/public#', $calendar_id, $temp_calendar_id)) {
+      //  $calendar_id = $temp_calendar_id[1][0];
+      //}
+
       variable_set('gcal_events_calendar_id_'. $delta, $calendar_id);
 
       $private_id = check_plain($edit['gcal_events_private_id']);
@@ -497,13 +503,13 @@ function gcal_events_contents($which_block) {
 
   $gcal_events = array();
 
-  $calendar_id = variable_get('gcal_events_calendar_id_'. $which_block, '');
   $private_id = variable_get('gcal_events_private_id_'. $which_block, ''); 
+  $calendar_ids = variable_get('gcal_events_calendar_id_'. $which_block, '');
   $today_only = variable_get('gcal_events_today_only_'. $which_block, '');
 
   $admin_name = variable_get('gcal_events_admin_name_' . $which_block, 'Block '. ($which_block+1));
 
-  if ($calendar_id == "") {
+  if ($calendar_ids == "") {
     drupal_set_message('GCal Events['. $admin_name .'] Calendar ID Not Set!', 'error');
     return;
   }
@@ -557,134 +563,136 @@ function gcal_events_contents($which_block) {
     return;
   }
 
-  // Form the XML address.
-  //
-  // http://code.google.com/apis/calendar/docs/2.0/reference.html
+  $events = array();
 
-  $public_private = "public";
-  if ($private_id != "") {
-    $public_private = "private-". $private_id;
-  }
-  $calendar_xml_address = "http://www.google.com/calendar/feeds/". $calendar_id ."/". $public_private ."/full?";
-  $calendar_xml_array = array();
-  array_push($calendar_xml_array, "max-results=2500", "orderby=starttime", "singleevents=true");
+  foreach(split("[ \n]", $calendar_ids) as $calendar_id) {
+    $calendar_id = trim($calendar_id);
+    // Form the XML address.
+    //
+    // http://code.google.com/apis/calendar/docs/2.0/reference.html
 
-  // If you only want events from today, set the start-min, start-max
-  if ($today_only) {
-    //array_push($calendar_xml_array, "start-min=".date("Y-m-d"), "start-max=".date("Y-m-d",strtotime("+1 day")));
-    array_push($calendar_xml_array, "start-min=". date("Y-m-d") ."T00:00:00". date("P") );
-    array_push($calendar_xml_array, "start-max=". date("Y-m-d") ."T23:59:00". date("P") );
-  }
-  else {
-    array_push($calendar_xml_array, "futureevents=true");
-  }
-  // Timezone?
-  //array_push($calendar_xml_array, "ctz=".$timezone);
-
-  $calendar_xml_address .= join("&", $calendar_xml_array);
-
-  // Let's create a new SimplePie object
-  $feed = new SimplePie();
-
-  // Cache location for your XML file 
-  $cache_location=variable_get('gcal_events_cache', GCAL_EVENTS_DEFAULT_CACHE);
-  if ($cache_location=="") {
-    // Cache disabled
-    $feed->enable_cache(false);
-    if ($debug_mode) {
-      drupal_set_message('GCal Events: WARNING: Cache Disabled');
+    $public_private = "public";
+    if ($private_id != "") {
+      $public_private = "private-". $private_id;
     }
-  }
-  else {
-    if (!is_writeable($cache_location)) {
-      drupal_set_message('GCal Events: Cache directory not writeable. Caching is disabled.', 'error');
-      $feed->enable_cache(false);
+    $calendar_xml_address = "http://www.google.com/calendar/feeds/". $calendar_id ."/". $public_private ."/full?";
+    $calendar_xml_array = array();
+    array_push($calendar_xml_array, "max-results=2500", "orderby=starttime", "singleevents=true");
+  
+    // If you only want events from today, set the start-min, start-max
+    if ($today_only) {
+      //array_push($calendar_xml_array, "start-min=".date("Y-m-d"), "start-max=".date("Y-m-d",strtotime("+1 day")));
+      array_push($calendar_xml_array, "start-min=". date("Y-m-d") ."T00:00:00". date("P") );
+      array_push($calendar_xml_array, "start-max=". date("Y-m-d") ."T23:59:00". date("P") );
     }
     else {
-      $cache_duration = variable_get('gcal_events_cache_duration', GCAL_EVENTS_DEFAULT_CACHE_DURATION);
-      $feed->enable_cache(true); // Default
-      $feed->set_cache_duration($cache_duration);
+      array_push($calendar_xml_array, "futureevents=true");
+    }
+    // Timezone?
+    //array_push($calendar_xml_array, "ctz=".$timezone);
+  
+    $calendar_xml_address .= join("&", $calendar_xml_array);
+  
+    // Let's create a new SimplePie object
+    $feed = new SimplePie();
+
+    // Cache location for your XML file 
+    $cache_location=variable_get('gcal_events_cache', GCAL_EVENTS_DEFAULT_CACHE);
+    if ($cache_location=="") {
+      // Cache disabled
+      $feed->enable_cache(false);
       if ($debug_mode) {
-        drupal_set_message('GCal Events: Cache is set to '. $cache_location);
-        drupal_set_message('GCal Events: Cache duration is '. $cache_duration . ' seconds');
+        drupal_set_message('GCal Events: WARNING: Cache Disabled');
+      }
+    }
+    else {
+      if (!is_writeable($cache_location)) {
+        drupal_set_message('GCal Events: Cache directory not writeable. Caching is disabled.', 'error');
+        $feed->enable_cache(false);
+      }
+      else {
+        $cache_duration = variable_get('gcal_events_cache_duration', GCAL_EVENTS_DEFAULT_CACHE_DURATION);
+        $feed->enable_cache(true); // Default
+        $feed->set_cache_duration($cache_duration);
+        if ($debug_mode) {
+          drupal_set_message('GCal Events: Cache is set to '. $cache_location);
+          drupal_set_message('GCal Events: Cache duration is '. $cache_duration . ' seconds');
+        }
+      }
+    }
+
+    // Set the cache location
+    $feed->set_cache_location($cache_location);
+
+    // This is the feed we'll use
+    $feed->set_feed_url($calendar_xml_address);
+    if ($debug_mode) {
+      drupal_set_message('GCal Events['. $admin_name .'] <a href='. $calendar_xml_address .'>FeedURL</A>');
+    }
+
+    // Let's turn this off because we're just going to re-sort anyways, and there's no reason to waste CPU doing it twice.
+    $feed->enable_order_by_date(false);
+
+    // Initialize the feed so that we can use it.
+    $time_feed_init = microtime(true);
+    $feed->init();
+    if ($debug_mode) {
+      drupal_set_message('GCal Events[' . $admin_name . '] Feed Init took ' . (microtime(true) - $time_feed_init) . ' seconds');
+    }
+  
+    if ($feed->error()) {
+      drupal_set_message('GCal Events['. $admin_name .'] '. $feed->error(), 'error');
+      return;
+    }
+  
+    // Make sure the content is being served out to the browser properly.
+    $feed->handle_content_type();
+  
+    $time_feed_process = microtime(true);
+    foreach ($feed->get_items() as $item) {
+      // We want to grab the Google-namespaced <gd:when> tag.
+      $when = $item->get_item_tags('http://schemas.google.com/g/2005', 'when');
+  
+      // Now, let's grab the Google-namespaced <gd:where> tag.
+      $gd_where = $item->get_item_tags('http://schemas.google.com/g/2005', 'where');
+      $location = $gd_where[0]['attribs']['']['valueString'];
+  
+      //and the status tag too, come to that
+      $gd_status = $item->get_item_tags('http://schemas.google.com/g/2005', 'eventStatus');
+      $status = substr( $gd_status[0]['attribs']['']['value'], -8);
+  
+      $date = $when[0]['attribs']['']['startTime'];
+  
+      $allday = strlen($date)<11;
+  
+      // Hack to make sure all day
+      if ($allday) {
+        // Hack to fix bug in google calendar API where incorrect all-day events are returned.
+        if ($today_only && ($date != date("Y-m-d")))
+       { continue; }
+        $unixdate = SimplePie_Misc::parse_date($date . " 11:59pm");
+      }
+      else {
+        $unixdate = SimplePie_Misc::parse_date($date);
+      }
+  
+      $where = $item->get_item_tags('http://schemas.google.com/g/2005', 'where');
+      $location = $where[0]['attribs']['']['valueString'];
+  
+      if (strlen(trim($item->get_title()))>1 && $status != "canceled" && strlen(trim($date)) > 0) {
+            $events[] = array(
+              'date' => $unixdate,
+              'allday' => $allday,
+              'where' => $location,
+              'title' => $item->get_title(),
+              'description' => $item->get_description(),
+              'link' => $item->get_link()
+          );
       }
     }
   }
-
-  // Set the cache location
-  $feed->set_cache_location($cache_location);
-
-  // This is the feed we'll use
-  $feed->set_feed_url($calendar_xml_address);
-  if ($debug_mode) {
-    drupal_set_message('GCal Events['. $admin_name .'] <a href='. $calendar_xml_address .'>FeedURL</A>');
-  }
-
-  // Let's turn this off because we're just going to re-sort anyways, and there's no reason to waste CPU doing it twice.
-  $feed->enable_order_by_date(false);
-
-  // Initialize the feed so that we can use it.
-  $time_feed_init = microtime(true);
-  $feed->init();
-  if ($debug_mode) {
-    drupal_set_message('GCal Events[' . $admin_name . '] Feed Init took ' . (microtime(true) - $time_feed_init) . ' seconds');
-  }
-
-  if ($feed->error()) {
-    drupal_set_message('GCal Events['. $admin_name .'] '. $feed->error(), 'error');
-    return;
-  }
-
-  // Make sure the content is being served out to the browser properly.
-  $feed->handle_content_type();
-
-  // We'll use this for re-sorting the items based on the new date.
-  $temp = array();
-
-  $time_feed_process = microtime(true);
-  foreach ($feed->get_items() as $item) {
-    // We want to grab the Google-namespaced <gd:when> tag.
-    $when = $item->get_item_tags('http://schemas.google.com/g/2005', 'when');
-
-    // Now, let's grab the Google-namespaced <gd:where> tag.
-    $gd_where = $item->get_item_tags('http://schemas.google.com/g/2005', 'where');
-    $location = $gd_where[0]['attribs']['']['valueString'];
-
-    //and the status tag too, come to that
-    $gd_status = $item->get_item_tags('http://schemas.google.com/g/2005', 'eventStatus');
-    $status = substr( $gd_status[0]['attribs']['']['value'], -8);
-
-    $date = $when[0]['attribs']['']['startTime'];
-
-    $allday = strlen($date)<11;
-
-    // Hack to make sure all day
-    if ($allday) {
-      // Hack to fix bug in google calendar API where incorrect all-day events are returned.
-      if ($today_only && ($date != date("Y-m-d")))
-      { continue; }
-      $unixdate = SimplePie_Misc::parse_date($date . " 11:59pm");
-    }
-    else {
-      $unixdate = SimplePie_Misc::parse_date($date);
-    }
-
-    $where = $item->get_item_tags('http://schemas.google.com/g/2005', 'where');
-    $location = $where[0]['attribs']['']['valueString'];
-
-    if (strlen(trim($item->get_title()))>1 && $status != "canceled" && strlen(trim($date)) > 0) {
-        $temp[] = array(
-            'date' => $unixdate,
-            'allday' => $allday,
-            'where' => $location,
-            'title' => $item->get_title(),
-            'description' => $item->get_description(),
-            'link' => $item->get_link()
-        );
-    }
-  }
   //Sort this
-  sort($temp);
+  sort($events);
 
   // Limit the looping
   $num_events = variable_get('gcal_events_num_events_'. $which_block, GCAL_EVENTS_DEFAULT_NUM_EVENTS);
@@ -694,7 +702,7 @@ function gcal_events_contents($which_block) {
 
   // Loop through the (now sorted) array, and display what we wanted.
 
-  foreach ($temp as $item) {
+  foreach ($events as $item) {
     $num_events--;
     // These are the dates we'll display
     $gcal_date = date($dateformat, $item['date']);
