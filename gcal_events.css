@@ -1,0 +1,16 @@
+/*
+ * This is an example CSS file for gcal_events. In this example, the list bullets are removed and margin/padding reduced to zero.
+ */
+
+ul.gcal_events {
+  list-style: none;
+  margin-left: 0px;
+  padding-left: 0px;
+}
+
+ul.gcal_events li {
+  list-style: none;
+  margin-left: 0px;
+  padding-left: 0px;
+}
+
