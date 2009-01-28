@@ -3,14 +3,19 @@
  */
 
 ul.gcal_events {
+  // This block effects the entire list
   list-style: none;
   margin-left: 0px;
   padding-left: 0px;
 }
 
 ul.gcal_events li {
+  // This block effects the individual list items
   list-style: none;
   margin-left: 0px;
   padding-left: 0px;
 }
 
+ul.gcal_events li.first {
+  // This block effects only the first item in each list
+}
