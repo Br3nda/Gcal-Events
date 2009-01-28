@@ -1,5 +1,5 @@
 <?php
-// $Id: gcal_events.module,v 1.15 2009/01/27 22:32:44 se7enlc Exp $
+// $Id: gcal_events.module,v 1.16 2009/01/28 14:46:23 se7enlc Exp $
 
 /**
  * @file
@@ -637,6 +637,9 @@ function gcal_events_contents($which_block) {
 
     // Hack to make sure all day
     if ($allday) {
+      // Hack to fix bug in google calendar API where incorrect all-day events are returned.
+      if ($today_only && ($date != date("Y-m-d")))
+      { continue; }
       $unixdate = SimplePie_Misc::parse_date($date . " 11:59pm");
     }
     else {
