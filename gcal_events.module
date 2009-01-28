@@ -1,5 +1,5 @@
 <?php
-// $Id: gcal_events.module,v 1.17 2009/01/28 17:23:28 se7enlc Exp $
+// $Id: gcal_events.module,v 1.18 2009/01/28 20:30:21 se7enlc Exp $
 
 /**
  * @file
@@ -28,10 +28,10 @@ else {
  * Configuration Defaults
  */
 define('GCAL_EVENTS_DEFAULT_TEMPLATE_EVENT', '<P>#TITLE##LOC##DATE##TIME#');
-define('GCAL_EVENTS_DEFAULT_TEMPLATE_TITLE', '<b>#TITLE#</b><br>');
-define('GCAL_EVENTS_DEFAULT_TEMPLATE_DATE', '#DATE#<br>');
-define('GCAL_EVENTS_DEFAULT_TEMPLATE_TIME', '#TIME#<br>');
-define('GCAL_EVENTS_DEFAULT_TEMPLATE_DESC', '#DESC#<br>');
+define('GCAL_EVENTS_DEFAULT_TEMPLATE_TITLE', '<b>#TITLE#</b><br/>');
+define('GCAL_EVENTS_DEFAULT_TEMPLATE_DATE', '#DATE#<br/>');
+define('GCAL_EVENTS_DEFAULT_TEMPLATE_TIME', '#TIME#<br/>');
+define('GCAL_EVENTS_DEFAULT_TEMPLATE_DESC', '#DESC#<br/>');
 define('GCAL_EVENTS_DEFAULT_TEMPLATE_LOC', '#LOC#');
 define('GCAL_EVENTS_DEFAULT_TEMPLATE_URL', '#URL#');
 define('GCAL_EVENTS_DEFAULT_TIME_FORMAT', 'g:ia');
