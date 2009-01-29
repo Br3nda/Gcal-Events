@@ -1,5 +1,5 @@
 <?php
-// $Id: gcal_events.module,v 1.20 2009/01/28 23:32:41 se7enlc Exp $
+// $Id: gcal_events.module,v 1.21 2009/01/29 22:31:24 se7enlc Exp $
 
 /**
  * @file
@@ -44,6 +44,12 @@ define('GCAL_EVENTS_DEFAULT_CACHE_DURATION', 3600);
 define('GCAL_EVENTS_DEFAULT_FOOTER', '');
 define('GCAL_EVENTS_DEFAULT_INPUT_FORMAT', '1');
 define('GCAL_EVENTS_DEFAULT_TODAY_ONLY', '0');
+
+define('GCAL_EVENTS_DEFAULT_HEADING_TODAY', '<b>Today</b><hr />');
+define('GCAL_EVENTS_DEFAULT_HEADING_TOMORROW', '<b>Tomorrow</b><hr />');
+define('GCAL_EVENTS_DEFAULT_HEADING_THISWEEK', '<b>This Week</b><hr />');
+define('GCAL_EVENTS_DEFAULT_HEADING_THISMONTH', '<b>This Month</b><hr />');
+define('GCAL_EVENTS_DEFAULT_HEADING_OTHER', '<b>Other</b><hr />');
 
 if (USE_TIMEZONES) {
   define('GCAL_EVENTS_DEFAULT_TIMEZONE', date_default_timezone_get());
@@ -128,6 +134,51 @@ function gcal_events_admin() {
       );
   }
 
+  $form['day_grouping'] = array(
+    '#type' => 'fieldset',
+    '#title' => 'Day Grouping',
+    '#collapsible' => TRUE,
+    '#description' => t('This section deals with grouping events by days "Today", "Tomorrow", "This Week", "This Month" and "Other", by default.')
+    );
+
+  // Enable day grouping
+  $form['day_grouping']['gcal_events_day_grouping'] = array(
+    '#type' => 'checkbox',
+    '#title' => 'Enable Day Grouping',
+    '#default_value' => variable_get('gcal_events_day_grouping', FALSE),
+    '#description' => t('Enable grouping events by day ("Today", "Tomorrow", "This Week", "This Month" and "Other"')
+    );
+  $form['day_grouping']['gcal_events_heading_today'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Heading for Todays Events'),
+    '#default_value' => variable_get('gcal_events_heading_today', GCAL_EVENTS_DEFAULT_HEADING_TODAY),
+    '#description' => t('The heading to display before a day grouping for todays events.')
+    );
+  $form['day_grouping']['gcal_events_heading_tomorrow'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Heading for Tomorrows Events'),
+    '#default_value' => variable_get('gcal_events_heading_tomorrow', GCAL_EVENTS_DEFAULT_HEADING_TOMORROW),
+    '#description' => t('The heading to display before a day grouping for tomorrows events.')
+    );
+  $form['day_grouping']['gcal_events_heading_thisweek'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Heading for This Weeks Events'),
+    '#default_value' => variable_get('gcal_events_heading_thisweek', GCAL_EVENTS_DEFAULT_HEADING_THISWEEK),
+    '#description' => t('The heading to display before a day grouping for this weeks events.')
+    );
+  $form['day_grouping']['gcal_events_heading_thismonth'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Heading for This Months Events'),
+    '#default_value' => variable_get('gcal_events_heading_thismonth', GCAL_EVENTS_DEFAULT_HEADING_THISMONTH),
+    '#description' => t('The heading to display before a day grouping for this months events.')
+    );
+  $form['day_grouping']['gcal_events_heading_other'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Heading for other Events'),
+    '#default_value' => variable_get('gcal_events_heading_today', GCAL_EVENTS_DEFAULT_HEADING_TODAY),
+    '#description' => t('The heading to display before a day grouping for events that are not this month.')
+    );
+
   // Get input formats and reorder into a useful manner
   $input_formats = filter_formats();
   foreach ($input_formats as $key=>$value) {    
@@ -150,7 +201,7 @@ function gcal_events_admin() {
     '#description' => 'Enable debugging mode'
     );
 
-  // Use templated "Item List"
+ // Use templated "Item List"
   $form['gcal_events_item_list'] = array(
     '#type' => 'checkbox',
     '#title' => 'Item List',
@@ -493,7 +544,7 @@ function block_reset_defaults($form, &$form_state) {
 /**
  * A block content function.
  */
-function gcal_events_contents($which_block) {
+function gcal_events_get_events($which_block) {
 
   // for timing
   $start_time = microtime(true);
@@ -528,17 +579,6 @@ function gcal_events_contents($which_block) {
       drupal_set_message('Timezone Support Disabled! PHP Version '. PHP_VERSION .' < 5.1');
     }
   }  
-
-  // Date format you want your details to appear
-  $dateformat = variable_get('gcal_events_dateformat_'. $which_block, "");
-  if ($dateformat == "") {
-    $dateformat = variable_get('gcal_events_dateformat', GCAL_EVENTS_DEFAULT_DATE_FORMAT);
-  }
-
-  $timeformat = variable_get('gcal_events_timeformat_'. $which_block, "");
-  if ($timeformat == "") {
-    $timeformat = variable_get('gcal_events_timeformat', GCAL_EVENTS_DEFAULT_TIME_FORMAT);
-  }
 
   // How you want each thing to display.
   // 
@@ -678,15 +718,44 @@ function gcal_events_contents($which_block) {
   
       $where = $item->get_item_tags('http://schemas.google.com/g/2005', 'where');
       $location = $where[0]['attribs']['']['valueString'];
-  
+   
+      $timeformat = variable_get('gcal_events_timeformat_'. $which_block, "");
+      if ($timeformat == "") {
+        $timeformat = variable_get('gcal_events_timeformat', GCAL_EVENTS_DEFAULT_TIME_FORMAT);
+      }
+
+      if (!$allday) {
+        $gcal_time = date($timeformat, $unixdate);
+      }
+      else
+      {
+        $gcal_time="all day";
+        // $gcal_time=""; // to have no output for all-day events
+        //$item['title'] = $item['title'] . " (all day)"; // to tag the title with "(all-day)"
+      }
+
+      // Date format you want your details to appear
+      $dateformat = variable_get('gcal_events_dateformat_'. $which_block, "");
+      if ($dateformat == "") {
+        $dateformat = variable_get('gcal_events_dateformat', GCAL_EVENTS_DEFAULT_DATE_FORMAT);
+      }
+ 
+      $gcal_date = date($dateformat, $unixdate);
+ 
       if (strlen(trim($item->get_title()))>1 && $status != "canceled" && strlen(trim($date)) > 0) {
             $events[] = array(
-              'date' => $unixdate,
+              'timestamp' => $unixdate,
+              'time' => $gcal_time,
+	      'date' => $gcal_date,
               'allday' => $allday,
               'where' => $location,
               'title' => $item->get_title(),
               'description' => $item->get_description(),
-              'link' => $item->get_link()
+              'link' => $item->get_link(),
+              'today' => date("Y-m-d") == date("Y-m-d", $unixdate),
+              'tomorrow' => (date("Y-m-d",strtotime("+1 day")) == date("Y-m-d", $unixdate)),
+              'thisweek' => (date("Y-W") == date("Y-W", $unixdate)),
+              'thismonth' => (date("Y-m") == date("Y-m", $unixdate))
           );
       }
     }
@@ -694,28 +763,15 @@ function gcal_events_contents($which_block) {
   //Sort this
   sort($events);
 
-  // Limit the looping
   $num_events = variable_get('gcal_events_num_events_'. $which_block, GCAL_EVENTS_DEFAULT_NUM_EVENTS);
   if ($debug_mode) {
     drupal_set_message('GCal Events['. $admin_name .'] Num Events: '. $num_events );
   }
+  return array_slice($events, 0, $num_events);
+}
 
-  // Loop through the (now sorted) array, and display what we wanted.
-
+function template_events($events) {
   foreach ($events as $item) {
-    $num_events--;
-    // These are the dates we'll display
-    $gcal_date = date($dateformat, $item['date']);
-
-    if (!$item['allday']) {
-      $gcal_time = date($timeformat, $item['date']);
-    }
-    else
-    {
-      $gcal_time="all day";
-      // $gcal_time=""; // to have no output for all-day events
-      //$item['title'] = $item['title'] . " (all day)"; // to tag the title with "(all-day)"
-    }
 
     // Now, let's run it through some str_replaces, and store it with the date for easy sorting later
     $temp_event=variable_get('gcal_events_template_event_'. $which_block, GCAL_EVENTS_DEFAULT_TEMPLATE_EVENT);
@@ -734,15 +790,16 @@ function gcal_events_contents($which_block) {
       $temp_event=str_replace("#DESC#", "", $temp_event);
     }
 
-    if ($gcal_date) {
-      $temp_event=str_replace("#DATE#", $gcal_date, str_replace("#DATE#", variable_get('gcal_events_template_date_'. $which_block, GCAL_EVENTS_DEFAULT_TEMPLATE_DATE), $temp_event));
+    if ($item['date']) {
+      $temp_event=str_replace("#DATE#", $item['date'], str_replace("#DATE#", variable_get('gcal_events_template_date_'. $which_block, GCAL_EVENTS_DEFAULT_TEMPLATE_DATE), $temp_event));
     }
     else {
       $temp_event=str_replace("#DATE#", "", $temp_event);
     }
 
-    if ($gcal_time) {
-      $temp_event=str_replace("#TIME#", $gcal_time, str_replace("#TIME#", variable_get('gcal_events_template_time_'. $which_block, GCAL_EVENTS_DEFAULT_TEMPLATE_TIME), $temp_event));
+    if ($item['time']) {
+      $temp_event=str_replace("#TIME#", $item['time'], str_replace("#TIME#", variable_get('gcal_events_template_time_'. $which_block, GCAL_EVENTS_DEFAULT_TEMPLATE_TIME), 
+$temp_event));
     }
     else {
       $temp_event=str_replace("#TIME#", "", $temp_event);
@@ -772,40 +829,124 @@ function gcal_events_contents($which_block) {
     // Check for invalid html
     $temp_event = check_markup($temp_event, $input_format, FALSE);
 
-    $gcal_events[] = $temp_event;
-    if ($num_events==0) {
-      break;
-    }
-  }
+    $item['event'] = $temp_event;
+    $gcal_events[] = $item;
+}
+  return $gcal_events;
+}
+
+function gcal_events_contents($which_block) {
+
+  $events = gcal_events_get_events($which_block);
+  $events = template_events($events);
+
+  return theme('gcal_events_contents', $events, $which_block);
+
   if ($debug_mode) {
     drupal_set_message('GCal Events[' . $admin_name . '] Feed processing took ' . (microtime(true) - $time_feed_process) . ' seconds');
   }
-  
-  return theme('gcal_events_contents', $gcal_events, $which_block);
+  return theme('gcal_events_contents', $events, $which_block);
 }
 
 function theme_gcal_events_contents($gcal_events, $which_block) {
   $full_path = drupal_get_path('module', 'gcal_events'). '/gcal_events.css';
   drupal_add_css($full_path);
 
+  $output = "";
+
   $use_item_list = variable_get('gcal_events_item_list', '1');
 
-  $output = '';
+  $day_grouping = variable_get('gcal_events_day_grouping', FALSE);
+
   if (empty($gcal_events)) {
     $output .= variable_get('gcal_events_empty_'. $which_block, 'none');
-  }
-  else {
-    if ($use_item_list) {
-      // new method (lists)
-      $output .= theme('item_list', $gcal_events, NULL, 'ul', array('class' => 'gcal_events'));
-    }
-    else {
-      // default method
-      $output .= join("", $gcal_events);
-    }
+    return $output;
   }
 
+  if ($day_grouping) {
+    $today_events = array_filter($gcal_events, 'is_today');
+    $tomorrow_events = array_filter($gcal_events, 'is_tomorrow');
+    $thisweek_events = array_filter($gcal_events, 'is_thisweek_exc');
+    $thismonth_events = array_filter($gcal_events, 'is_thismonth_exc');
+    $other_events = array_filter($gcal_events, 'isnt_thismonth');
+
+    if (count($today_events)>0) {
+      $output .= variable_get('gcal_events_heading_today', GCAL_EVENTS_DEFAULT_HEADING_TODAY);
+      $output .= gcal_events_display_events($use_item_list, $today_events, 'today');
+    }
+    if (count($tomorrow_events)>0) {
+      $output .= variable_get('gcal_events_heading_tomorrow', GCAL_EVENTS_DEFAULT_HEADING_TOMORROW);
+      $output .= gcal_events_display_events($use_item_list, $tomorrow_events, 'tomorrow');
+    }
+    if (count($thisweek_events)>0) {
+      $output .= variable_get('gcal_events_heading_thisweek', GCAL_EVENTS_DEFAULT_HEADING_THISWEEK);
+      $output .= gcal_events_display_events($use_item_list, $thisweek_events, 'thisweek');
+    }
+    if (count($thismonth_events) > 0) {
+      $output .= variable_get('gcal_events_heading_thismonth', GCAL_EVENTS_DEFAULT_HEADING_THISMONTH);
+      $output .= gcal_events_display_events($use_item_list, $thismonth_events, 'thismonth');
+    }
+    if (count($other_events)>0) {
+      $output .= variable_get('gcal_events_heading_other', GCAL_EVENTS_DEFAULT_HEADING_OTHER);
+      $output .= gcal_events_display_events($use_item_list, $other_events, 'other');
+    }
+ }
+  else {
+    $output .= gcal_events_display_events($use_item_list, $gcal_events);
+  }
   $output .= variable_get('gcal_events_footer_'. $which_block, '');
-  
+
   return $output;
+}
+
+function gcal_events_display_events($use_item_list, $events, $class='gcal_events') {
+  if ($class != "gcal_events") {
+    $class = "gcal_events_" . $class;
+  }
+  if ($use_item_list) {
+    return theme('item_list', gcal_events_just_entries($events), NULL, 'ul', array('class' => $class));
+  }
+  else {
+    return join("", gcal_events_just_entries($events));
+  }
+}
+
+function is_today($event) {
+  if ($event['today']) return TRUE;
+  return FALSE;
+}
+
+function is_tomorrow($event) {
+  if ($event['tomorrow']) return TRUE;
+  return FALSE;
+}
+
+function is_thisweek_inc($event) {
+  if ($event['thisweek']) return TRUE;
+  return FALSE;
+}
+
+function is_thisweek_exc($event) {
+  if ($event['thisweek'] && !$event['today'] && !$event['tomorrow']) return TRUE;
+  return FALSE;
+}
+
+function is_thismonth_inc($event) {
+  if ($event['thismonth']) return TRUE;
+  return FALSE;
+}
+function isnt_thismonth($event) {
+  return !is_thismonth_inc($event);
+}
+
+function is_thismonth_exc($event) {
+  if ($event['thismonth'] && !$event['thisweek'] && !$event['tomorrow'] && !$event['today']) return TRUE;
+  return FALSE;
+}
+
+function gcal_events_just_entries($events) {
+  foreach ($events as $event) {
+    $just_entries[] = $event['event'];
+  }
+  return $just_entries;
 }
