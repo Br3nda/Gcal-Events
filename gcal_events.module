@@ -1,5 +1,5 @@
 <?php
-// $Id: gcal_events.module,v 1.22 2009/01/29 22:35:16 se7enlc Exp $
+// $Id: gcal_events.module,v 1.23 2009/01/29 22:50:06 se7enlc Exp $
 
 /**
  * @file
@@ -770,7 +770,7 @@ function gcal_events_get_events($which_block) {
   return array_slice($events, 0, $num_events);
 }
 
-function template_events($events) {
+function template_events($events, $which_block) {
   foreach ($events as $item) {
 
     // Now, let's run it through some str_replaces, and store it with the date for easy sorting later
@@ -838,7 +838,7 @@ $temp_event));
 function gcal_events_contents($which_block) {
 
   $events = gcal_events_get_events($which_block);
-  $events = template_events($events);
+  $events = template_events($events, $which_block);
 
   return theme('gcal_events_contents', $events, $which_block);
 
