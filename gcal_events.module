@@ -1,5 +1,5 @@
 <?php
-// $Id: gcal_events.module,v 1.21 2009/01/29 22:31:24 se7enlc Exp $
+// $Id: gcal_events.module,v 1.22 2009/01/29 22:35:16 se7enlc Exp $
 
 /**
  * @file
@@ -175,7 +175,7 @@ function gcal_events_admin() {
   $form['day_grouping']['gcal_events_heading_other'] = array(
     '#type' => 'textfield',
     '#title' => t('Heading for other Events'),
-    '#default_value' => variable_get('gcal_events_heading_today', GCAL_EVENTS_DEFAULT_HEADING_TODAY),
+    '#default_value' => variable_get('gcal_events_heading_other', GCAL_EVENTS_DEFAULT_HEADING_OTHER),
     '#description' => t('The heading to display before a day grouping for events that are not this month.')
     );
 
