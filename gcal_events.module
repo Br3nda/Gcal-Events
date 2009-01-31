@@ -1,5 +1,5 @@
 <?php
-// $Id: gcal_events.module,v 1.23 2009/01/29 22:50:06 se7enlc Exp $
+// $Id: gcal_events.module,v 1.24 2009/01/31 21:35:02 se7enlc Exp $
 
 /**
  * @file
@@ -12,7 +12,6 @@
  *
  * TODO: Customizable number of days ahead to look
  */
-
 
 /*
  * PHP Version Compatibility Check. Timezone support requires PHP 5.1 or higher.
@@ -193,12 +192,13 @@ function gcal_events_admin() {
     '#default_value' => variable_get('gcal_events_input_format', GCAL_EVENTS_DEFAULT_INPUT_FORMAT)
     );
 
-  // Turn on debugging mode
+ // Turn on debugging mode
   $form['gcal_events_debug'] = array(
-    '#type' => 'checkbox',
-    '#title' => 'Debug Mode',
-    '#default_value' => variable_get('gcal_events_debug', FALSE),
-    '#description' => 'Enable debugging mode'
+    '#type' => 'select',
+    '#title' => t('Debug Level'),
+    '#options' => array(0=>"0 - none",1=>"1 - low",2,3,4,5=>"5 - high"),
+    '#default_value' => variable_get('gcal_events_debug', 0),
+    '#description' => 'Enable debugging mode level. Select 0 for no debugging.'
     );
 
  // Use templated "Item List"
@@ -335,7 +335,7 @@ function gcal_events_block($op = 'list', $delta = 0, $edit = array()) {
         '#type' => 'textarea',
         '#title' => t('Calendar ID(s)'),
         '#size' => 60,
-        '#maxlength' => 300,
+        '#maxlength' => 1000,
         '#description' => t('Calendar IDs, as shown on Calendar Settings page in google calendar. Will be in the form something@group.calendar.google.com, 
 someting@gmail.com, etc. Multiple Calendar IDs can be separated by space or return.'),
         '#default_value' => variable_get('gcal_events_calendar_id_'. $delta,  '')
@@ -549,8 +549,9 @@ function gcal_events_get_events($which_block) {
   // for timing
   $start_time = microtime(true);
 
-  // Change this to 'true' to see lots of fancy debug code
-  $debug_mode=variable_get('gcal_events_debug', FALSE);
+  gcal_events_debug_2("PHP Memory Limit: ". ini_get('memory_limit'));
+  gcal_events_debug("PHP Initial Memory Usage: ". round(memory_get_usage(FALSE)/1024/1024, 1 ) ."MB");
+  gcal_events_debug("PHP Initial Memory Usage (real): ". round(memory_get_usage(TRUE)/1024/1024, 1 ) ."MB");
 
   $gcal_events = array();
 
@@ -566,18 +567,14 @@ function gcal_events_get_events($which_block) {
   }
 
   if (USE_TIMEZONES) { 
-    if ($debug_mode) {
-      drupal_set_message('Timezone: '. date_default_timezone_get());
-    }
+    gcal_events_debug('Timezone: '. date_default_timezone_get());
     $timezone = variable_get('gcal_events_timezone', GCAL_EVENTS_DEFAULT_TIMEZONE);
     if (!date_default_timezone_set($timezone)) {
       drupal_set_message('GCal Events: Timezone $timezone is not valid!');
     }
   }
   else {
-    if ($debug_mode) {
-      drupal_set_message('Timezone Support Disabled! PHP Version '. PHP_VERSION .' < 5.1');
-    }
+    gcal_events_debug('Timezone Support Disabled! PHP Version '. PHP_VERSION .' < 5.1');
   }  
 
   // How you want each thing to display.
@@ -603,7 +600,12 @@ function gcal_events_get_events($which_block) {
     return;
   }
 
+  gcal_events_debug('Simplepie version ' . SIMPLEPIE_VERSION);
+
   $events = array();
+
+  $num_events = variable_get('gcal_events_num_events_'. $which_block, GCAL_EVENTS_DEFAULT_NUM_EVENTS);
+  gcal_events_debug_block($admin_name, 'Num Events: '. $num_events );
 
   foreach(split("[ \n]", $calendar_ids) as $calendar_id) {
     $calendar_id = trim($calendar_id);
@@ -617,8 +619,9 @@ function gcal_events_get_events($which_block) {
     }
     $calendar_xml_address = "http://www.google.com/calendar/feeds/". $calendar_id ."/". $public_private ."/full?";
     $calendar_xml_array = array();
-    array_push($calendar_xml_array, "max-results=2500", "orderby=starttime", "singleevents=true");
-  
+    array_push($calendar_xml_array, "max-results=$num_events", "orderby=starttime", "singleevents=true");
+    array_push($calendar_xml_array, "sortorder=ascending");  
+
     // If you only want events from today, set the start-min, start-max
     if ($today_only) {
       //array_push($calendar_xml_array, "start-min=".date("Y-m-d"), "start-max=".date("Y-m-d",strtotime("+1 day")));
@@ -641,9 +644,7 @@ function gcal_events_get_events($which_block) {
     if ($cache_location=="") {
       // Cache disabled
       $feed->enable_cache(false);
-      if ($debug_mode) {
-        drupal_set_message('GCal Events: WARNING: Cache Disabled');
-      }
+      drupal_set_message('GCal Events: WARNING: Cache Disabled');
     }
     else {
       if (!is_writeable($cache_location)) {
@@ -654,10 +655,8 @@ function gcal_events_get_events($which_block) {
         $cache_duration = variable_get('gcal_events_cache_duration', GCAL_EVENTS_DEFAULT_CACHE_DURATION);
         $feed->enable_cache(true); // Default
         $feed->set_cache_duration($cache_duration);
-        if ($debug_mode) {
-          drupal_set_message('GCal Events: Cache is set to '. $cache_location);
-          drupal_set_message('GCal Events: Cache duration is '. $cache_duration . ' seconds');
-        }
+        gcal_events_debug('Cache is set to '. $cache_location);
+        gcal_events_debug('Cache duration is '. $cache_duration . ' seconds');
       }
     }
 
@@ -666,9 +665,7 @@ function gcal_events_get_events($which_block) {
 
     // This is the feed we'll use
     $feed->set_feed_url($calendar_xml_address);
-    if ($debug_mode) {
-      drupal_set_message('GCal Events['. $admin_name .'] <a href='. $calendar_xml_address .'>FeedURL</A>');
-    }
+    gcal_events_debug_block($admin_name, '<a href='. $calendar_xml_address .'>FeedURL</A>');
 
     // Let's turn this off because we're just going to re-sort anyways, and there's no reason to waste CPU doing it twice.
     $feed->enable_order_by_date(false);
@@ -676,12 +673,10 @@ function gcal_events_get_events($which_block) {
     // Initialize the feed so that we can use it.
     $time_feed_init = microtime(true);
     $feed->init();
-    if ($debug_mode) {
-      drupal_set_message('GCal Events[' . $admin_name . '] Feed Init took ' . (microtime(true) - $time_feed_init) . ' seconds');
-    }
+    gcal_events_debug_block($admin_name, 'Feed Init took ' . round((microtime(true) - $time_feed_init),2) . ' seconds');
   
     if ($feed->error()) {
-      drupal_set_message('GCal Events['. $admin_name .'] '. $feed->error(), 'error');
+      drupal_set_message('GCal Events ['. $admin_name .'] '. $feed->error(), 'error');
       return;
     }
   
@@ -701,8 +696,10 @@ function gcal_events_get_events($which_block) {
       $gd_status = $item->get_item_tags('http://schemas.google.com/g/2005', 'eventStatus');
       $status = substr( $gd_status[0]['attribs']['']['value'], -8);
   
-      $date = $when[0]['attribs']['']['startTime'];
-  
+      $date = $when[0]['attribs']['']['startTime'];  
+
+      gcal_events_debug_block_2($admin_name, "Date from google feed is $date");
+
       $allday = strlen($date)<11;
   
       // Hack to make sure all day
@@ -714,6 +711,9 @@ function gcal_events_get_events($which_block) {
       }
       else {
         $unixdate = SimplePie_Misc::parse_date($date);
+      }
+      if ($unixdate == 0) {
+        gcal_events_debug_block_2($admin_name, "Either the date is actually Jan 1 1970 or SimplePie_Misc::parse_date() is returning the wrong date. date: $date, unixdate: $unixdate");
       }
   
       $where = $item->get_item_tags('http://schemas.google.com/g/2005', 'where');
@@ -757,16 +757,29 @@ function gcal_events_get_events($which_block) {
               'thisweek' => (date("Y-W") == date("Y-W", $unixdate)),
               'thismonth' => (date("Y-m") == date("Y-m", $unixdate))
           );
+
+        gcal_events_debug_block_2($admin_name, "Title: ". $item->get_title());
+        gcal_events_debug_block_2($admin_name, "Date: ". $gcal_date);
+        gcal_events_debug_block_2($admin_name, "Time: ". $gcal_time);
+        gcal_events_debug_block_2($admin_name, "Timestamp: ". $unixdate ." (". date("Y-m-d", $unixdate) .")");
+        gcal_events_debug_block_2($admin_name, "Location: ". $location);
+        gcal_events_debug_block_2($admin_name, "Desc: ". $item->get_description());
+        gcal_events_debug_block_2($admin_name, "Link: <a href=\"". $item->get_link() . "\">URL</A>");       
       }
     }
+    gcal_events_debug("PHP Memory Usage: ". round(memory_get_usage(FALSE)/1024/1024, 1 ) ."MB");
+    gcal_events_debug("PHP Memory Usage (real): ". round(memory_get_usage(TRUE)/1024/1024, 1 ) ."MB");
+
+    // Fix for PHP/SimplePie memory leak. Especially needed for handling
+    // multiple feeds in a single block.
+    $feed->__destruct(); // Do what PHP should be doing on it's own.
+    unset($feed);
   }
   //Sort this
   sort($events);
 
-  $num_events = variable_get('gcal_events_num_events_'. $which_block, GCAL_EVENTS_DEFAULT_NUM_EVENTS);
-  if ($debug_mode) {
-    drupal_set_message('GCal Events['. $admin_name .'] Num Events: '. $num_events );
-  }
+  gcal_events_debug_block($admin_name, 'Feed processing took ' . round((microtime(true) - $time_feed_process),2) . ' seconds');
+
   return array_slice($events, 0, $num_events);
 }
 
@@ -840,11 +853,6 @@ function gcal_events_contents($which_block) {
   $events = gcal_events_get_events($which_block);
   $events = template_events($events, $which_block);
 
-  return theme('gcal_events_contents', $events, $which_block);
-
-  if ($debug_mode) {
-    drupal_set_message('GCal Events[' . $admin_name . '] Feed processing took ' . (microtime(true) - $time_feed_process) . ' seconds');
-  }
   return theme('gcal_events_contents', $events, $which_block);
 }
 
@@ -949,4 +957,61 @@ function gcal_events_just_entries($events) {
     $just_entries[] = $event['event'];
   }
   return $just_entries;
+}
+
+function gcal_events_debug($string) {
+  gcal_events_debug_master(array(level=>1, msg=>$string));
+}
+
+function gcal_events_debug_2($string) {
+  gcal_events_debug_master(array(level=>2, msg=>$string));
+}
+
+function gcal_events_debug_3($string) {
+  gcal_events_debug_master(array(level=>3, msg=>$string));
+}
+
+function gcal_events_debug_4($string) {
+  gcal_events_debug_master(array(level=>4, msg=>$string));
+}
+
+function gcal_events_debug_5($string) {
+  gcal_events_debug_master(array(level=>5, msg=>$string));
+}
+
+function gcal_events_debug_block($block, $string) {
+  gcal_events_debug_master(array(block=>$block, msg=>$string));
+}
+
+function gcal_events_debug_block_2($block, $string) {
+  gcal_events_debug_master(array(level=>2, block=>$block, msg=>$string));
+}
+
+/*
+ * Debug Message function master. It's best to call the other wrapper functions instead.
+ */
+function gcal_events_debug_master($data) {
+  // Get the debug variable
+  static $debug_mode = -1;
+  if ($debug_mode == -1) {
+    $debug_mode = variable_get('gcal_events_debug', FALSE);
+  }
+  if ($debug_mode) {
+    if (is_array($data)) {
+      if ($data['level'] && $data['level'] > $debug_mode) return;
+      $disp_string = '';
+      $disp_string .= "GCal Events";
+      if ($data['block']) {  
+        $disp_string .= "[". $data['block'] ."]: ";
+      }
+      else {
+        $disp_string .= ": ";
+      }
+      $disp_string .= $data['msg'];
+      drupal_set_message($disp_string);
+    }
+    else {
+      drupal_set_message("gcal_events_debug_master called incorrectly!");
+    }
+  }
 }
