@@ -1,5 +1,5 @@
 <?php
-// $Id: gcal_events.module,v 1.24 2009/01/31 21:35:02 se7enlc Exp $
+// $Id: gcal_events.module,v 1.25 2009/01/31 22:35:44 se7enlc Exp $
 
 /**
  * @file
@@ -216,14 +216,6 @@ function gcal_events_admin() {
  * Validate the admin settings form. Check to make sure number of blocks is positive. Time/Date formats are hard to check....so we just don't.
  */
 function gcal_events_admin_validate($form, &$form_state) {
-  $num_blocks = $form_state['values']['gcal_events_num_blocks'];
-  if (!is_numeric($num_blocks)) {
-    form_set_error('gcal_events_num_blocks', t('You must select a number for the number of blocks.'));
-  }
-  else if ($num_blocks <= 0) {
-    form_set_error('gcal_events_num_blocks', t('Number of blocks must be positive.'));
-  }
-
   $cache = $form_state['values']['gcal_events_cache'];
 
   if (strlen($cache)>0) {
@@ -244,6 +236,25 @@ function gcal_events_admin_validate($form, &$form_state) {
       form_set_error('gcal_events_timezone', t('Timezone is not valid'));
     }
   }
+
+  // Make sure this is last
+  $num_blocks = $form_state['values']['gcal_events_num_blocks'];
+  if (!is_numeric($num_blocks)) {
+    form_set_error('gcal_events_num_blocks', t('You must select a number for the number of blocks.'));
+  }
+  else if ($num_blocks <= 0) {
+    form_set_error('gcal_events_num_blocks', t('Number of blocks must be positive.'));
+  }
+
+  $old_num_blocks = variable_get('gcal_events_num_blocks', GCAL_EVENTS_DEFAULT_NUM_BLOCKS);
+  if ($old_num_blocks > $num_blocks)
+  {
+    for ($a = $num_blocks; $a < $old_num_blocks; $a++) {
+      drupal_set_message("Deleting block ". ($a+1) ." [". variable_get('gcal_events_admin_name_'. $a, 'not named') ."]");
+      gcal_events_delete_block($a);
+    }
+  }
+  return TRUE;
 }
 
 /*
@@ -300,7 +311,7 @@ function gcal_events_block($op = 'list', $delta = 0, $edit = array()) {
       // This is used to provide a list of possible blocks to the administrator,
       // end users will not see these descriptions.
 
-      for ($index=0; $index<variable_get('gcal_events_num_blocks', 1); $index++) {
+      for ($index=0; $index<variable_get('gcal_events_num_blocks', GCAL_EVENTS_DEFAULT_NUM_BLOCKS); $index++) {
         $blocks[$index]['info'] = t('GCal Events ['. variable_get('gcal_events_admin_name_'. $index, 'Block '. ($index+1)) .']');
       }
       return $blocks;
@@ -523,6 +534,10 @@ function block_reset_defaults($form, &$form_state) {
   //print "This is block number [".$block_number."]";
   drupal_set_message('Reset to defaults');
 
+  gcal_events_delete_block($block_number);
+}
+
+function gcal_events_delete_block($block_number) {
   variable_del('gcal_events_today_only_'. $block_number);
   variable_del('gcal_events_footer_'. $block_number);
   variable_del('gcal_events_admin_name_'. $block_number);
