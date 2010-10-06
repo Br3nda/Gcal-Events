@@ -39,7 +39,7 @@ define('GCAL_EVENTS_DEFAULT_DATE_FORMAT', 'j F, Y');
 define('GCAL_EVENTS_DEFAULT_NUM_BLOCKS', 1);
 define('GCAL_EVENTS_DEFAULT_ITEM_LIST', TRUE);
 define('GCAL_EVENTS_DEFAULT_NUM_EVENTS', 5);
-define('GCAL_EVENTS_DEFAULT_CACHE', drupal_get_path('module', 'gcal_events') ."/cache");
+define('GCAL_EVENTS_DEFAULT_CACHE', file_directory_path() . '/gcal_events/cache');
 define('GCAL_EVENTS_DEFAULT_CACHE_DURATION', 3600);
 define('GCAL_EVENTS_DEFAULT_FOOTER', '');
 define('GCAL_EVENTS_DEFAULT_INPUT_FORMAT', '1');
@@ -221,13 +221,18 @@ function gcal_events_admin_validate($form, &$form_state) {
 
   if (strlen($cache)>0) {
     if (!file_exists($cache)) {
-      form_set_error('gcal_events_cache', t('Cache Directory "') . $cache . t('" does not exist. Please create it before saving the settings.'));
+      if (!mkdir($cache)) {
+        form_set_error('gcal_events_cache', t('Cache Directory "%path" does not exist. Please create it before saving the settings.', array('%path' => $cache)));
+      }
+      else {
+        drupal_set_message(t("Cache directory created at %path.", array('%path' => $cache)));
+      }
     }
     if (!is_dir($cache)) {
-      form_set_error('gcal_events_cache', t('Cache directory "') . $cache . t('" is not a directory!'));
+      form_set_error('gcal_events_cache', t('Cache directory "%path" is not a directory!', array('%path' => $cache)));
     }
     if (!is_writeable($cache)) {
-      form_set_error('gcal_events_cache', t('Cache directory "') . $cache . t('" is not writeable'));
+      form_set_error('gcal_events_cache', t('Cache directory "%path" is not writeable', array('%path' => $cache)));
     }
   }
 
